@@ -31,6 +31,7 @@ clap = { version = "4.6", default-features = false, features = [
   "usage",
   "wrap_help",
 ] }
+mailparse = { version = "0.18", default-features = false }
 rustls = { version = "0.23", default-features = false, features = [
   "ring",
   "std",
