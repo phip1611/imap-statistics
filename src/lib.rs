@@ -14,6 +14,7 @@ pub mod imap;
 pub mod index;
 pub mod pdf;
 pub mod report;
+pub mod run;
 pub mod store;
 pub mod svg;
 #[cfg(test)]
