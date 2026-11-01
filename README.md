@@ -48,8 +48,8 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    top ones (default: 5).
 
    The report states when it was generated, in UTC. If set,
-   `SOURCE_DATE_EPOCH` (seconds since 1970) overrides that time, e.g. for
-   reproducible reports.
+   `IMAP_STATISTICS_NOW` (seconds since 1970) overrides the current time,
+   e.g. for reproducible reports.
 
    If [pandoc](https://pandoc.org) is installed, the run also converts the
    report into `report.pdf`. With [typst](https://typst.app) installed as
