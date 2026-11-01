@@ -576,6 +576,8 @@ mod tests {
             .collect()
     }
 
+    /// The tables must read well as plain text, so all cells of a column have
+    /// the same width.
     #[test]
     fn pads_table_cells_to_align_columns() {
         let rows = [
@@ -609,6 +611,8 @@ mod tests {
         assert_eq!(paragraph(&format!("a {long} b")), ["a", &long, "b", ""]);
     }
 
+    /// Many emails make long numbers, which must still wrap at 80 columns.
+    /// Tables may be wider.
     #[test]
     fn keeps_text_lines_within_80_columns() {
         // Many emails make long numbers in the paragraphs.
@@ -645,6 +649,8 @@ mod tests {
         .expect("source should parse")
     }
 
+    /// An email in two accounts counts for each, an account without emails
+    /// shows zeros, and the password never shows.
     #[test]
     fn lists_the_accounts_with_their_emails() {
         let mut both = entry(Some(2024), "a@example.com", Category::Personal);
@@ -670,6 +676,8 @@ mod tests {
         assert!(!markdown.contains("secret"), "{markdown}");
     }
 
+    /// Years without emails show as 0, so that gaps are visible. Emails without
+    /// a year are left out with a note.
     #[test]
     fn counts_emails_per_year_with_gaps() {
         let mut sent = entry(Some(2023), "me@example.com", Category::Personal);
@@ -707,6 +715,8 @@ mod tests {
         assert!(chart.contains("<title>2023, Sent: 1</title>"), "{chart}");
     }
 
+    /// Categories sort by their number of emails, ties in the order of the
+    /// rules. Sent emails do not count.
     #[test]
     fn counts_emails_per_category_largest_first() {
         let index = Index {
@@ -758,6 +768,8 @@ mod tests {
         assert!(chart.contains("<title>newsletter: 2</title>"), "{chart}");
     }
 
+    /// Senders rank by their number of emails, ties by address, with their most
+    /// used name. Sent emails and emails without sender do not count.
     #[test]
     fn ranks_the_top_senders() {
         // Boring setup: b has 3 emails, under two names, a and c have 2
@@ -808,6 +820,8 @@ mod tests {
         assert!(chart.contains("<title>Top 2 senders</title>"), "{chart}");
     }
 
+    /// Only recipients of sent emails count, once per email, and never an own
+    /// address.
     #[test]
     fn ranks_the_top_recipients_of_sent_emails() {
         // Boring setup: two sent emails, one to a and b, one to a and the

@@ -265,6 +265,7 @@ mod tests {
         Index::build(&sources(entries), &HashSet::new(), NOW)
     }
 
+    /// Years change at midnight in UTC, also before 1970 and around leap days.
     #[test]
     fn computes_the_year_in_utc() {
         for (timestamp, expected) in [
@@ -302,6 +303,8 @@ mod tests {
         );
     }
 
+    /// An email counts as sent if it came from an own address, or if a copy is
+    /// in a Sent folder of the same source.
     #[test]
     fn tells_sent_from_received_emails() {
         // Boring setup: in "work", an email from an own address, one in a
@@ -348,6 +351,8 @@ mod tests {
         );
     }
 
+    /// The same email in two folders, or in two sources after forwarding,
+    /// counts once, but lists all its sources.
     #[test]
     fn counts_copies_once() {
         // Boring setup: the same email in two folders of "work" and in
@@ -367,6 +372,8 @@ mod tests {
         assert_eq!(copies, [vec!["work", "home"], vec!["home"]]);
     }
 
+    /// Without Message-ID, date, sender, and subject identify copies. Headers
+    /// without any of them must not merge into one email.
     #[test]
     fn counts_copies_without_message_id_by_their_fields() {
         let header = "From: a@example.com\r\nSubject: Hi\r\n\r\n";
@@ -384,6 +391,8 @@ mod tests {
         assert_eq!(index.emails.len(), 4);
     }
 
+    /// Broken Date headers, e.g. 1970 or far in the future, must not distort
+    /// the years, so the arrival on the server is the fallback.
     #[test]
     fn falls_back_to_the_arrival_for_missing_or_implausible_dates() {
         let mut headers = Vec::new();

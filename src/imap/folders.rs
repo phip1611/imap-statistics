@@ -84,6 +84,8 @@ mod tests {
         );
     }
 
+    /// On Gmail, every label is a folder, so only "All Mail" is fetched, or an
+    /// email with several labels would count several times.
     #[test]
     fn selects_only_the_folder_with_all_emails() {
         // As on Gmail, where every label is a folder.

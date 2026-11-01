@@ -56,6 +56,8 @@ pub(super) fn command_name(command: &str) -> &str {
 mod tests {
     use super::*;
 
+    /// Every command that the client sends must pass the allowlist, or fetches
+    /// would fail.
     #[test]
     fn allows_the_commands_of_the_client() {
         for command in [
@@ -70,6 +72,8 @@ mod tests {
         }
     }
 
+    /// The second line of defense: whatever a bug builds, no command that could
+    /// change a mailbox may pass, also not one hidden behind a line break.
     #[test]
     fn refuses_commands_that_could_change_a_mailbox() {
         for command in [

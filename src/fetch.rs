@@ -209,6 +209,8 @@ mod tests {
         uids
     }
 
+    /// A first fetch of a typical server: the exact IMAP commands, the folders
+    /// that it reads, and what ends up in the store.
     #[test]
     fn fetches_new_headers_of_selected_folders() {
         // Boring setup: a server with INBOX, an empty Sent folder, and the
@@ -272,6 +274,8 @@ mod tests {
         );
     }
 
+    /// A second fetch only fetches new emails, and drops emails that were
+    /// deleted on the server in the meantime.
     #[test]
     fn fetches_only_headers_that_are_not_stored() {
         let dir = TempDir::new("fetch-again");

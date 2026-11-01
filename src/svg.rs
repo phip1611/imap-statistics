@@ -445,6 +445,7 @@ mod tests {
         }
     }
 
+    /// Axis ticks are round numbers, with at most five gridlines above zero.
     #[test]
     fn chooses_round_scales() {
         for (maximum, expected) in [
@@ -481,6 +482,8 @@ mod tests {
         data.iter().map(|(l, v)| (l.clone(), vec![*v])).collect()
     }
 
+    /// Received and sent emails stack in one column per year, with a legend
+    /// that names them.
     #[test]
     fn stacks_two_series_with_a_legend() {
         let data = [
@@ -498,6 +501,8 @@ mod tests {
         assert_eq!(svg.matches(r#"class="bar2""#).count(), 3, "{svg}");
     }
 
+    /// With many years, the labels would overlap, so only every n-th year has
+    /// one.
     #[test]
     fn thins_out_crowded_column_labels() {
         let years: Vec<_> =

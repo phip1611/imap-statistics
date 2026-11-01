@@ -258,6 +258,8 @@ mod tests {
         assert_eq!(config.sources[1].port, 1993);
     }
 
+    /// A relative data directory is relative to the config file, but an
+    /// absolute one must stay as it is, on every OS.
     #[test]
     fn keeps_absolute_data_dir() {
         let absolute = env::temp_dir().join("data");
@@ -278,6 +280,8 @@ mod tests {
         );
     }
 
+    /// Source names become directory names, so they must be valid on every OS,
+    /// also on file systems that ignore case.
     #[test]
     fn rejects_names_that_are_no_portable_directory_names() {
         for name in ["", "Work", "a/b", r"a\b", "..", "a b", "ä"] {
@@ -289,6 +293,8 @@ mod tests {
         }
     }
 
+    /// Own addresses compare with senders, which the index stores in lowercase.
+    /// A username without `@` is no address.
     #[test]
     fn returns_own_addresses_in_lowercase() {
         let text = MINIMAL.replace(
@@ -338,6 +344,8 @@ mod tests {
         assert!(message.contains("unknown field `user`"), "{message}");
     }
 
+    /// Errors and logs may print the config with `Debug`, which must never show
+    /// the password.
     #[test]
     fn debug_output_hides_the_password() {
         let config = Config::parse(MINIMAL, Path::new(""))

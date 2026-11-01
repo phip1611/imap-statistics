@@ -282,6 +282,8 @@ mod tests {
         );
     }
 
+    /// The error of a failed login must not quote the LOGIN command, which has
+    /// the password, and must be a `CommandFailed`, so that hints find it.
     #[test]
     fn reports_failed_login_without_the_password() {
         let mut client =
@@ -299,6 +301,9 @@ mod tests {
         assert_eq!(failed.command, "LOGIN");
     }
 
+    /// Line breaks in credentials could smuggle in commands, and non-ASCII
+    /// is no valid quoted string, so both are refused before anything is
+    /// sent.
     #[test]
     fn refuses_to_send_unsupported_credentials() {
         let mut client = client(b"");
@@ -310,6 +315,8 @@ mod tests {
         assert_eq!(sent(&client), "");
     }
 
+    /// Servers send folder names as atoms, quoted strings, or literals, which
+    /// all must work.
     #[test]
     fn lists_folders() {
         let mut client = client(
@@ -330,6 +337,8 @@ mod tests {
         );
     }
 
+    /// EXAMINE opens a folder read-only. The number of emails and the
+    /// UIDVALIDITY come among other untagged responses.
     #[test]
     fn examines_folder() {
         let mut client = client(
@@ -369,6 +378,8 @@ mod tests {
         assert_eq!(uids, [3, 4, 5]);
     }
 
+    /// The core of a fetch. Servers may order the items freely, add flags, and
+    /// send updates of other emails, which have no header.
     #[test]
     fn fetches_headers() {
         // The second email has its items in another order and flags, the
@@ -417,6 +428,8 @@ mod tests {
         assert_eq!(sent(&client), "");
     }
 
+    /// A server may close the connection at any time with BYE, e.g. when it
+    /// shuts down, which ends the command with an error.
     #[test]
     fn rejects_bye_during_command() {
         let mut client = client(b"* BYE shutting down\r\n");

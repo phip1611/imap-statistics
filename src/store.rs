@@ -393,6 +393,8 @@ mod tests {
         );
     }
 
+    /// A new UIDVALIDITY makes all known UIDs of a folder invalid, so all its
+    /// emails count as missing.
     #[test]
     fn fetches_folders_again_when_their_uidvalidity_changes() {
         let dir = TempDir::new("store-uidvalidity");
@@ -405,6 +407,8 @@ mod tests {
         assert_eq!(store.missing("Sent", 1, &[1]), [1]);
     }
 
+    /// The store keeps all headers ever fetched, but only the emails of the
+    /// last complete fetch count.
     #[test]
     fn loads_only_emails_that_are_on_the_server() {
         let dir = TempDir::new("store-current");
@@ -426,6 +430,8 @@ mod tests {
         assert_eq!(loaded(dir.path()), [("INBOX".into(), 1)]);
     }
 
+    /// Ctrl+C can stop a fetch in the middle of a line. The next fetch must
+    /// repair the file, keep the complete lines, and continue.
     #[test]
     fn keeps_headers_of_fetch_that_stopped_halfway() {
         let dir = TempDir::new("store-stopped");
@@ -475,6 +481,7 @@ mod tests {
         assert_eq!(sent, HashSet::from(["Sent".to_owned()]));
     }
 
+    /// Stores of versions before the Sent flag must still load.
     #[test]
     fn reads_folders_of_older_versions_as_not_sent() {
         let dir = TempDir::new("store-old");

@@ -122,6 +122,8 @@ mod tests {
     /// A program name that no OS has.
     const MISSING: &str = "imap-statistics-test-missing-program";
 
+    /// pandoc is optional, so without it, the error must say so plainly, and
+    /// the CLI only warns.
     #[test]
     fn skips_the_pdf_without_pandoc() {
         let dir = TempDir::new("pdf-missing");
