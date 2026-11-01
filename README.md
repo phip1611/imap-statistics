@@ -52,6 +52,12 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    charts next to it. `--output <dir>` writes it elsewhere, and `--top <n>`
    sets the number of senders in the list of top senders (default: 50).
 
+   If [pandoc](https://pandoc.org) is installed, `report` also converts the
+   report into `report.pdf`. With [typst](https://typst.app) installed as
+   well, pandoc uses it, otherwise pandoc's default, which needs LaTeX and
+   `rsvg-convert` for the charts. Without pandoc, there is no PDF, only a
+   warning.
+
 `--config <path>` selects another config file.
 
 ### What is fetched
