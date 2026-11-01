@@ -130,6 +130,8 @@ fn render(
         top,
         false,
     ));
+    markdown.extend(all_senders(&senders));
+    markdown.extend(all_recipients(&recipients));
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
 }
@@ -515,6 +517,84 @@ fn top_per_year(
     lines
 }
 
+/// Returns the section with all senders of received emails.
+///
+/// # Arguments
+///
+/// - `senders`: The senders of received emails, the most emails first.
+fn all_senders(senders: &[(&str, Contact)]) -> Vec<String> {
+    let mut lines = vec!["## All senders".to_owned(), String::new()];
+    lines.extend(paragraph(
+        "Every sender of received emails, the most emails first, e.g. to find \
+         the ones to clean up. The category is the most common one of the \
+         emails of the sender. First and Last are the years of the first and \
+         the last email.",
+    ));
+    lines.extend(table(
+        &["#", "Sender", "Name", "Category", "Emails", "First", "Last"],
+        &[0, 4, 5, 6],
+        senders.iter().enumerate().map(|(rank, (address, sender))| {
+            let mut row = vec![
+                (rank + 1).to_string(),
+                escape(address),
+                escape(sender.name()),
+                sender
+                    .category()
+                    .map(Category::name)
+                    .unwrap_or_default()
+                    .into(),
+                number(sender.emails),
+            ];
+            row.extend(first_and_last(sender));
+            row
+        }),
+    ));
+    lines
+}
+
+/// Returns the section with all recipients of sent emails.
+///
+/// # Arguments
+///
+/// - `recipients`: The recipients of sent emails, the most emails first.
+fn all_recipients(recipients: &[(&str, Contact)]) -> Vec<String> {
+    let mut lines = vec!["## All recipients".to_owned(), String::new()];
+    lines.extend(paragraph(
+        "Every recipient of sent emails, the most emails first. First and \
+         Last are the years of the first and the last email.",
+    ));
+    lines.extend(table(
+        &["#", "Recipient", "Emails", "First", "Last"],
+        &[0, 2, 3, 4],
+        recipients
+            .iter()
+            .enumerate()
+            .map(|(rank, (address, recipient))| {
+                let mut row = vec![
+                    (rank + 1).to_string(),
+                    escape(address),
+                    number(recipient.emails),
+                ];
+                row.extend(first_and_last(recipient));
+                row
+            }),
+    ));
+    lines
+}
+
+/// Returns the cells with the years of the first and the last email of a
+/// contact, empty if none of its emails has a year.
+///
+/// # Arguments
+///
+/// - `contact`: The contact.
+fn first_and_last(contact: &Contact) -> [String; 2] {
+    contact
+        .period()
+        .map(|(first, last)| [first.to_string(), last.to_string()])
+        .unwrap_or_default()
+}
+
 /// Returns the data of a chart of the first contacts.
 ///
 /// # Arguments
@@ -893,6 +973,34 @@ mod tests {
         );
     }
 
+    /// The complete list shows every sender, with the most common category
+    /// of its emails, and the years of its first and last email.
+    #[test]
+    fn lists_all_senders() {
+        // Boring setup: a has a newsletter and a personal email in 2021 and
+        // a newsletter in 2024. b has one email without a year.
+        let emails = vec![
+            entry(Some(2024), "a@example.com", Category::Newsletter),
+            entry(Some(2021), "a@example.com", Category::Personal),
+            entry(Some(2021), "a@example.com", Category::Newsletter),
+            entry(None, "b@example.com", Category::Shopping),
+        ];
+
+        let report = render(&Index { emails }, &[], GENERATED, 1);
+
+        let markdown = file(&report, REPORT_FILE);
+        let section = &markdown[markdown
+            .find("## All senders")
+            .expect("report should have the section")..];
+        assert_eq!(
+            rows(section, "#"),
+            [
+                ["1", "a@example.com", "", "newsletter", "3", "2021", "2024"],
+                ["2", "b@example.com", "", "shopping", "1", "", ""],
+            ]
+        );
+    }
+
     /// Only recipients of sent emails count, once per email, and never an own
     /// address.
     #[test]
@@ -924,6 +1032,16 @@ mod tests {
         );
         let chart = file(&report, RECIPIENTS_CHART);
         assert!(chart.contains("<title>a@example.com: 2</title>"), "{chart}");
+        let section = &markdown[markdown
+            .find("## All recipients")
+            .expect("report should have the section")..];
+        assert_eq!(
+            rows(section, "#"),
+            [
+                ["1", "a@example.com", "2", "2024", "2024"],
+                ["2", "b@example.com", "1", "2024", "2024"]
+            ]
+        );
     }
 
     #[test]

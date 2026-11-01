@@ -6,6 +6,7 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
 
+use crate::category::Category;
 use crate::index::{Entry, Index};
 
 /// What the report shows of a sender or recipient.
@@ -17,6 +18,9 @@ pub(super) struct Contact {
     /// How often each display name was used. Empty for recipients, as the
     /// index has only the names of senders.
     names: BTreeMap<String, u64>,
+    /// How many emails are in each category. Empty for recipients, as the
+    /// categories of sent emails say little.
+    categories: BTreeMap<Category, u64>,
 }
 
 impl Contact {
@@ -40,6 +44,22 @@ impl Contact {
             .map(|(name, _)| name.as_str())
             .unwrap_or_default()
     }
+
+    /// Returns the most common category, the first in the order of the
+    /// rules on ties.
+    pub(super) fn category(&self) -> Option<Category> {
+        self.categories
+            .iter()
+            .max_by_key(|&(category, count)| (count, Reverse(category)))
+            .map(|(&category, _)| category)
+    }
+
+    /// Returns the years of the first and the last email.
+    pub(super) fn period(&self) -> Option<(i64, i64)> {
+        let first = self.years.keys().next()?;
+        let last = self.years.keys().next_back()?;
+        Some((*first, *last))
+    }
 }
 
 /// Returns the senders of received emails, the most emails first.
@@ -57,6 +77,7 @@ pub(super) fn senders(index: &Index) -> Vec<(&str, Contact)> {
         };
         let sender = senders.entry(address).or_default();
         sender.add(email);
+        *sender.categories.entry(email.category).or_default() += 1;
         if let Some(name) = &email.sender_name {
             *sender.names.entry(name.clone()).or_default() += 1;
         }

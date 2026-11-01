@@ -229,3 +229,34 @@ The top 5 of each year, the newest year first, with their emails in that year.
 | 2012 | ben.miller@example.com   |     40 |
 |      | chen.li@example.net      |     40 |
 |      | anna.schmidt@example.org |     34 |
+
+## All senders
+
+Every sender of received emails, the most emails first, e.g. to find the ones to
+clean up. The category is the most common one of the emails of the sender. First
+and Last are the years of the first and the last email.
+
+|   # | Sender                        | Name          | Category     | Emails | First | Last |
+| --: | :---------------------------- | :------------ | :----------- | -----: | ----: | ---: |
+|   1 | noreply@ci.example.com        | Example CI    | notification |  1,050 |  2013 | 2025 |
+|   2 | ben.miller@example.com        | Ben Miller    | personal     |    895 |  2012 | 2025 |
+|   3 | news@shop.example.com         | Example Shop  | newsletter   |    892 |  2012 | 2025 |
+|   4 | digest@forum.example.org      | Example Forum | newsletter   |    647 |  2012 | 2025 |
+|   5 | anna.schmidt@example.org      | Anna Schmidt  | personal     |    575 |  2012 | 2025 |
+|   6 | chen.li@example.net           | Chen Li       | personal     |    445 |  2012 | 2025 |
+|   7 | notification@facebookmail.com | Facebook      | social       |    377 |  2012 | 2025 |
+|   8 | messages-noreply@linkedin.com | LinkedIn      | social       |    331 |  2012 | 2025 |
+|   9 | orders@shop.example.com       | Example Shop  | shopping     |    228 |  2012 | 2025 |
+|  10 | billing@telco.example.net     | Example Telco | shopping     |    163 |  2012 | 2025 |
+
+## All recipients
+
+Every recipient of sent emails, the most emails first. First and Last are the
+years of the first and the last email.
+
+|   # | Recipient                | Emails | First | Last |
+| --: | :----------------------- | -----: | ----: | ---: |
+|   1 | ben.miller@example.com   |    754 |  2012 | 2025 |
+|   2 | chen.li@example.net      |    754 |  2012 | 2025 |
+|   3 | anna.schmidt@example.org |    236 |  2012 | 2025 |
+|   4 | team@example.com         |    162 |  2013 | 2025 |
