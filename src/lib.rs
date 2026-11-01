@@ -6,6 +6,7 @@
 //! is no stable API for other crates.
 
 pub mod config;
+pub mod email;
 pub mod fetch;
 pub mod imap;
 pub mod store;
