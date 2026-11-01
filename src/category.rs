@@ -64,6 +64,18 @@ impl Category {
         }
     }
 
+    /// Describes the emails of the category, for the report.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Social => "from a social network or dating site",
+            Self::Newsletter => "a newsletter, mailing list, or advertisement",
+            Self::Shopping => "about an order, payment, or delivery",
+            Self::Notification => "sent by a program, e.g. a security code",
+            Self::Personal => "everything else, mostly from people",
+        }
+    }
+
     /// Returns the category of an email.
     ///
     /// # Arguments

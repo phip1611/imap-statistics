@@ -3,17 +3,20 @@
 //! The report: a Markdown file with statistics of the index, and SVG
 //! charts next to it.
 
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
 
+use crate::category::Category;
 use crate::index::Index;
 use crate::svg::{self, number};
 
 pub const REPORT_FILE: &str = "report.md";
 const YEARS_CHART: &str = "emails-per-year.svg";
+const CATEGORIES_CHART: &str = "emails-per-category.svg";
 
 /// Writes the report and its charts into a directory.
 ///
@@ -58,9 +61,10 @@ fn render(index: &Index) -> Report {
         String::new(),
     ];
     let mut files = Vec::new();
-    let (section, chart) = years(index);
-    markdown.extend(section);
-    files.push(chart);
+    for (section, chart) in [years(index), categories(index)] {
+        markdown.extend(section);
+        files.push(chart);
+    }
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
 }
@@ -106,6 +110,56 @@ fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
     }
     let chart = svg::columns("Emails per year", &data);
     (lines, (YEARS_CHART, chart))
+}
+
+/// Returns the section with the emails per category, and its chart.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
+    let mut counts: BTreeMap<Category, u64> = Category::ALL
+        .iter()
+        .map(|&category| (category, 0))
+        .collect();
+    for email in &index.emails {
+        *counts.entry(email.category).or_default() += 1;
+    }
+    let mut counts: Vec<_> = counts.into_iter().collect();
+    // The largest first. The sort is stable, so ties keep the order of
+    // the rules.
+    counts.sort_by_key(|&(_, count)| Reverse(count));
+    let total = index.emails.len().max(1) as u64;
+    let mut lines = vec![
+        "## Emails per category".to_owned(),
+        String::new(),
+        format!("![Emails per category]({CATEGORIES_CHART})"),
+        String::new(),
+    ];
+    lines.extend(table(
+        &["Category", "Emails", "Share", "Description"],
+        &[1, 2],
+        counts.iter().map(|&(category, count)| {
+            vec![
+                category.name().to_owned(),
+                number(count),
+                format!("{}%", count * 100 / total),
+                category.description().to_owned(),
+            ]
+        }),
+    ));
+    lines.push(
+        "The categories come from simple rules on the headers, so a few \
+         emails are in the wrong category."
+            .to_owned(),
+    );
+    lines.push(String::new());
+    let data: Vec<_> = counts
+        .iter()
+        .map(|&(category, count)| (category.name().to_owned(), count))
+        .collect();
+    let chart = svg::bars("Emails per category", &data);
+    (lines, (CATEGORIES_CHART, chart))
 }
 
 /// Formats a count with its noun, e.g. `1 email` or `2 emails`.
@@ -286,6 +340,52 @@ mod tests {
             "{markdown}"
         );
         assert!(file(&report, YEARS_CHART).contains("<title>2023: 2</title>"));
+    }
+
+    #[test]
+    fn counts_emails_per_category_largest_first() {
+        let index = Index {
+            emails: vec![
+                entry(Some(2024), "a@example.com", Category::Personal),
+                entry(Some(2024), "n@example.com", Category::Newsletter),
+                entry(Some(2024), "m@example.com", Category::Newsletter),
+                entry(Some(2024), "s@example.com", Category::Social),
+            ],
+        };
+        let report = render(&index);
+        let markdown = file(&report, REPORT_FILE);
+        assert_eq!(
+            rows(markdown, "Category"),
+            [
+                [
+                    "newsletter",
+                    "2",
+                    "50%",
+                    "a newsletter, mailing list, or advertisement",
+                ],
+                ["social", "1", "25%", "from a social network or dating site"],
+                [
+                    "personal",
+                    "1",
+                    "25%",
+                    "everything else, mostly from people"
+                ],
+                [
+                    "shopping",
+                    "0",
+                    "0%",
+                    "about an order, payment, or delivery"
+                ],
+                [
+                    "notification",
+                    "0",
+                    "0%",
+                    "sent by a program, e.g. a security code",
+                ],
+            ]
+        );
+        let chart = file(&report, CATEGORIES_CHART);
+        assert!(chart.contains("<title>newsletter: 2</title>"), "{chart}");
     }
 
     #[test]
