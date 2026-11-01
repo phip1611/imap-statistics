@@ -13,8 +13,9 @@ use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
 use crate::imap::Client;
 
-/// Timeout to connect, per address of the server.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout to connect, per address of the server. A reachable server
+/// answers within a second, a wrong host or port does not answer at all.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Timeout per read or write, not per command. Generous, as servers may
 /// take a while to search large folders.
 const IO_TIMEOUT: Duration = Duration::from_secs(120);
@@ -31,11 +32,16 @@ pub type TlsStream = StreamOwned<ClientConnection, TcpStream>;
 ///
 /// - `host`: Host name of the server, e.g. `imap.example.com`.
 /// - `port`: Port of IMAP over TLS, usually 993.
-pub fn connect(host: &str, port: u16) -> anyhow::Result<Client<TlsStream>> {
+/// - `progress`: Receives a message for each address that is tried.
+pub fn connect(
+    host: &str,
+    port: u16,
+    progress: impl FnMut(&str),
+) -> anyhow::Result<Client<TlsStream>> {
     let server_name = ServerName::try_from(host.to_owned())
         .with_context(|| format!("invalid host name {host:?}"))?;
     let tls = ClientConnection::new(Arc::new(tls_config()?), server_name)?;
-    let tcp = connect_tcp(host, port)?;
+    let tcp = connect_tcp(host, port, progress)?;
     // The TLS handshake happens when the client reads the greeting.
     Client::new(StreamOwned::new(tls, tcp))
         .with_context(|| format!("failed to connect to {host}:{port}"))
@@ -47,12 +53,20 @@ pub fn connect(host: &str, port: u16) -> anyhow::Result<Client<TlsStream>> {
 ///
 /// - `host`: Host name or IP address of the server.
 /// - `port`: Port of the server.
-fn connect_tcp(host: &str, port: u16) -> anyhow::Result<TcpStream> {
+/// - `progress`: Receives a message for each address that is tried.
+fn connect_tcp(
+    host: &str,
+    port: u16,
+    mut progress: impl FnMut(&str),
+) -> anyhow::Result<TcpStream> {
     let addresses = (host, port)
         .to_socket_addrs()
         .with_context(|| format!("failed to resolve {host}"))?;
     let mut last_error = None;
     for address in addresses {
+        // Shows which address is tried, as a host may have several that
+        // each take up to the timeout when they do not answer.
+        progress(&format!("connecting to {address}"));
         match TcpStream::connect_timeout(&address, CONNECT_TIMEOUT) {
             Ok(stream) => {
                 stream.set_read_timeout(Some(IO_TIMEOUT))?;
@@ -94,7 +108,45 @@ fn tls_config() -> anyhow::Result<ClientConfig> {
 
 #[cfg(test)]
 mod tests {
+    use std::net::TcpListener;
+
     use super::*;
+
+    /// A host may have several addresses, which each take up to the
+    /// timeout. The progress shows which one is tried.
+    #[test]
+    fn reports_each_address_that_it_tries() {
+        // Boring setup: a server on a free port of the loopback address.
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .expect("loopback should have a free port");
+        let port = listener
+            .local_addr()
+            .expect("listener should have an address")
+            .port();
+        let mut messages = Vec::new();
+
+        connect_tcp("127.0.0.1", port, |m| messages.push(m.to_owned()))
+            .expect("connecting should work");
+
+        assert_eq!(messages, [format!("connecting to 127.0.0.1:{port}")]);
+    }
+
+    /// A closed port fails right away, with the host and port in the
+    /// error, so that hints can suggest checking them.
+    #[test]
+    fn fails_for_closed_ports() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .expect("loopback should have a free port")
+            .port();
+        // The listener is dropped, so nothing listens on the port anymore.
+        let error = connect_tcp("127.0.0.1", port, |_| {})
+            .expect_err("connecting should fail");
+        assert_eq!(
+            error.to_string(),
+            format!("failed to connect to 127.0.0.1:{port}")
+        );
+    }
 
     /// Checks that the root certificates of the OS are found, on every OS
     /// that CI runs on.

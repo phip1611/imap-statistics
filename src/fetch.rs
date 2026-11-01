@@ -43,8 +43,7 @@ pub fn fetch_source(
 ) -> anyhow::Result<Summary> {
     progress("reading the stored headers");
     let mut store = Store::open(&data_dir.join(&source.name))?;
-    progress("connecting");
-    let mut client = imap::connect(&source.host, source.port)?;
+    let mut client = imap::connect(&source.host, source.port, &mut progress)?;
     progress("logging in");
     client.login(&source.username, source.password.expose())?;
     let summary = fetch(&mut client, &mut store, progress)?;
