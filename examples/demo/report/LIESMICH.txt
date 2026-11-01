@@ -1,0 +1,51 @@
+E-Mail-Statistik
+================
+
+Dieses Verzeichnis enthält einen Bericht über die E-Mails in Ihren
+E-Mail-Konten, erstellt von imap-statistics:
+https://github.com/phip1611/imap-statistics
+
+imap-statistics liest die E-Mails nur. Es ändert oder löscht nichts in
+Ihren Konten.
+
+Dateien
+-------
+
+report.md        Der Bericht. Jeder Texteditor öffnet ihn. Ein
+                 Markdown-Betrachter, z. B. VS Code, zeigt auch die
+                 Diagramme.
+report.pdf       Derselbe Bericht als PDF, zum Lesen oder Drucken. Es gibt
+                 ihn nur, wenn pandoc installiert ist, siehe unten.
+senders.csv      Alle Absender empfangener E-Mails, für
+                 Tabellenkalkulationen wie LibreOffice Calc oder Excel.
+recipients.csv   Alle Empfänger gesendeter E-Mails, für
+                 Tabellenkalkulationen.
+*.svg            Die Diagramme des Berichts. Jeder Webbrowser öffnet sie.
+
+Aufräumen
+---------
+
+1. Lesen Sie die Übersicht am Anfang des Berichts. Sie zeigt, woher die
+   meisten Ihrer E-Mails kommen.
+2. Öffnen Sie senders.csv in einer Tabellenkalkulation und sortieren Sie
+   nach "Emails". Die Absender oben lohnen sich am meisten: Newsletter,
+   Shops und Benachrichtigungen schicken oft Tausende E-Mails.
+3. "First" und "Last" sind die Jahre der ersten und der letzten E-Mail
+   eines Absenders. Ist die letzte E-Mail Jahre alt, z. B. von einem
+   abbestellten Newsletter, können Sie oft alle E-Mails dieses Absenders
+   löschen.
+4. Suchen Sie in Ihrem E-Mail-Programm oder Webmail nach der Adresse des
+   Absenders, wählen Sie alle Treffer aus und löschen Sie sie. Bestellen
+   Sie Newsletter ab, die Sie nicht lesen, damit keine neuen kommen.
+5. Starten Sie imap-statistics erneut, um das Ergebnis zu sehen.
+
+Die Kategorien beruhen auf einfachen Regeln, daher sind einige E-Mails in
+der falschen Kategorie. Prüfen Sie die E-Mails, bevor Sie sie löschen.
+
+Das PDF
+-------
+
+Für das PDF wird pandoc benötigt: https://pandoc.org
+Am besten sieht es aus, wenn auch typst installiert ist: https://typst.app
+Ohne typst braucht pandoc LaTeX. Installieren Sie diese und starten Sie
+imap-statistics erneut.

@@ -18,16 +18,28 @@ use imap_statistics::pdf::{self, PDF_FILE};
 use imap_statistics::report::{self, REPORT_FILE};
 use imap_statistics::store;
 
-/// Fetches the headers of all emails from IMAP accounts and generates a
-/// Markdown report with statistics.
+/// Fetches the headers of all new emails from IMAP accounts, indexes them,
+/// and generates a Markdown report with statistics.
+///
+/// Every run continues where the last one stopped, so it can be repeated
+/// at any time, e.g. after Ctrl+C.
 #[derive(Debug, Parser)]
 #[command(version)]
 struct Cli {
     /// Path of the config file.
     #[arg(short, long, global = true, default_value = "imap-statistics.toml")]
     config: PathBuf,
+    /// Uses the fetched emails only, without connecting to the sources.
+    #[arg(long)]
+    offline: bool,
+    /// Directory for the report [default: "report" in the data directory].
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+    /// Number of senders and recipients in each list of top ones.
+    #[arg(long, default_value_t = 5)]
+    top: usize,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -35,22 +47,6 @@ enum Command {
     /// Checks the config file and lists the sources, without connecting to
     /// them.
     CheckConfig,
-    /// Fetches the headers of all new emails of all sources into the data
-    /// directory.
-    Fetch,
-    /// Builds the index of all fetched emails, without connecting to the
-    /// sources.
-    Index,
-    /// Generates the Markdown report with charts from the index.
-    Report {
-        /// Directory for the report [default: "report" in the data
-        /// directory].
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-        /// Number of senders and recipients in each list of top ones.
-        #[arg(long, default_value_t = 5)]
-        top: usize,
-    },
 }
 
 /// Runs the command of the command line.
@@ -58,12 +54,36 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let config = Config::load(&cli.config)?;
     match cli.command {
-        Command::CheckConfig => check_config(&config),
-        Command::Fetch => fetch_all(&config)?,
-        Command::Index => index(&config)?,
-        Command::Report { output, top } => report(&config, output, top)?,
+        Some(Command::CheckConfig) => {
+            check_config(&config);
+            Ok(())
+        }
+        None => run(&config, cli.offline, cli.output, cli.top),
     }
-    Ok(())
+}
+
+/// Fetches all sources, indexes the emails, and generates the report.
+///
+/// A failed source keeps its emails of earlier runs, so that the report is
+/// still useful, but the run fails at the end.
+///
+/// # Arguments
+///
+/// - `config`: The config.
+/// - `offline`: Whether to skip the fetch.
+/// - `output`: The directory for the report, or `None` for the default.
+/// - `top`: The number of senders and recipients in each list of top
+///   ones.
+fn run(
+    config: &Config,
+    offline: bool,
+    output: Option<PathBuf>,
+    top: usize,
+) -> anyhow::Result<()> {
+    let fetched = if offline { Ok(()) } else { fetch_all(config) };
+    let index = index(config)?;
+    report(config, &index, output, top)?;
+    fetched
 }
 
 /// Prints the data directory and the sources of the config.
@@ -113,18 +133,18 @@ fn fetch_all(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Builds the index of all fetched emails and writes it.
+/// Builds the index of all fetched emails, and writes it.
 ///
 /// # Arguments
 ///
 /// - `config`: The config.
-fn index(config: &Config) -> anyhow::Result<()> {
+fn index(config: &Config) -> anyhow::Result<Index> {
     let mut sources = Vec::new();
     for source in &config.sources {
         let dir = config.data_dir.join(&source.name);
         let headers = store::load(&dir)?;
         if headers.is_empty() {
-            eprintln!("{}: no emails, run `fetch` first", source.name);
+            eprintln!("{}: no fetched emails", source.name);
         }
         sources.push(SourceEmails {
             name: source.name.clone(),
@@ -149,26 +169,26 @@ fn index(config: &Config) -> anyhow::Result<()> {
         index.emails.len(),
         path.display()
     );
-    Ok(())
+    Ok(index)
 }
 
-/// Generates the report from the index.
+/// Generates the report.
 ///
 /// # Arguments
 ///
 /// - `config`: The config.
+/// - `index`: The index of all emails.
 /// - `output`: The directory for the report, or `None` for the default.
 /// - `top`: The number of senders and recipients in each list of top
 ///   ones.
 fn report(
     config: &Config,
+    index: &Index,
     output: Option<PathBuf>,
     top: usize,
 ) -> anyhow::Result<()> {
-    let index = Index::read(&config.data_dir.join(INDEX_FILE))
-        .context("no index, run `index` first")?;
     let output = output.unwrap_or_else(|| config.data_dir.join("report"));
-    report::write(&index, &config.sources, now()?, &output, top)?;
+    report::write(index, &config.sources, now()?, &output, top)?;
     eprintln!("Wrote {}", output.join(REPORT_FILE).display());
     // The PDF is a convenience, so its errors are only warnings.
     match pdf::convert(&output, REPORT_FILE) {

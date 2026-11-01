@@ -27,38 +27,31 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    imap-statistics check-config
    ```
 
-3. Fetch the headers of all emails:
+3. Fetch the headers of all emails, index them, and generate the report:
 
    ```sh
-   imap-statistics fetch
+   imap-statistics
    ```
 
-   The first fetch takes a while for large mailboxes. Later fetches only
-   fetch the headers of new emails. A fetch can stop at any time, e.g.
-   with Ctrl+C, and the next one continues where it stopped.
+   The first run takes a while for large mailboxes. Later runs only fetch
+   the headers of new emails. A run can stop at any time, e.g. with
+   Ctrl+C, and the next one continues where it stopped. `--offline` skips
+   the fetch and uses the emails of earlier runs. If a source fails, the
+   report still covers its emails of earlier runs, but the run fails at
+   the end.
 
-4. Build the index of all fetched emails:
-
-   ```sh
-   imap-statistics index
-   ```
-
-5. Generate the report:
-
-   ```sh
-   imap-statistics report
-   ```
-
-   It is written to `report/report.md` in the data directory, with SVG
-   charts and CSV files of all senders and recipients next to it.
-   `--output <dir>` writes it elsewhere, and `--top <n>` sets the number
-   of senders and recipients in each list of top ones (default: 5).
+   The report is written to `report/report.md` in the data directory, with
+   SVG charts and CSV files of all senders and recipients next to it.
+   `README.txt` and `LIESMICH.txt` (German) explain these files, and how to
+   clean up with them. `--output <dir>` writes the report elsewhere, and
+   `--top <n>` sets the number of senders and recipients in each list of
+   top ones (default: 5).
 
    The report states when it was generated, in UTC. If set,
    `SOURCE_DATE_EPOCH` (seconds since 1970) overrides that time, e.g. for
    reproducible reports.
 
-   If [pandoc](https://pandoc.org) is installed, `report` also converts the
+   If [pandoc](https://pandoc.org) is installed, the run also converts the
    report into `report.pdf`. With [typst](https://typst.app) installed as
    well, pandoc uses it, otherwise pandoc's default, which needs LaTeX and
    `rsvg-convert` for the charts. Without pandoc, there is no PDF, only a
@@ -81,7 +74,7 @@ the next fetch.
 
 ### The index
 
-`index` writes `index.json` to the data directory: one entry per email
+The index is in `index.json` in the data directory: one entry per email
 with its sources, year, sender, and category. Copies of an email in
 several folders or sources count once. The year is in UTC, from the
 `Date` header, or from the arrival on the server if `Date` is missing or
