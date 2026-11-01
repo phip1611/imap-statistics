@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
 
-use crate::imap::Client;
+use crate::imap::{Client, Session};
 
 /// A new, empty directory, which is removed again on drop.
 #[derive(Debug)]
@@ -107,6 +107,23 @@ impl Write for FakeServer {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// Returns a logged-in session whose server sends the given responses.
+///
+/// Also returns what the client sends to the server after the login. The
+/// first command after the login has the tag `a2`.
+///
+/// # Arguments
+///
+/// - `responses`: What the server sends after the login.
+pub fn fake_session(responses: &[u8]) -> (Session<FakeServer>, Sent) {
+    let mut all = b"a1 OK LOGIN completed\r\n".to_vec();
+    all.extend_from_slice(responses);
+    let (client, sent) = fake_client(&all);
+    let session = client.login("me", "secret").expect("login should succeed");
+    sent.0.borrow_mut().clear();
+    (session, sent)
 }
 
 /// Returns a client whose server sends the greeting, then responses.

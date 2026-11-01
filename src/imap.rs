@@ -10,19 +10,16 @@
 //! [`ReadOnlyStream`] checks every command line with [`check_read_only`]
 //! and refuses every other command before it reaches the server.
 //!
-//! The submodules read the responses of the server ([`response`]), parse
-//! them (`parse`), send the commands (`client`), guard them
-//! (`read_only`), choose the folders (`folders`), and connect over TLS
-//! (`connection`).
+//! The `imap` crate parses the responses. The submodules send the
+//! commands (`client`), guard them (`read_only`), choose the folders
+//! (`folders`), and connect over TLS (`connection`).
 
 mod client;
 mod connection;
 mod folders;
-mod parse;
 mod read_only;
-pub mod response;
 
-pub use client::{Client, CommandFailed};
+pub use client::{Client, CommandFailed, Session};
 pub use connection::{TlsStream, connect};
 pub use folders::select_folders;
 pub use read_only::{ReadOnlyStream, check_read_only};

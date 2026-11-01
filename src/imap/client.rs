@@ -1,27 +1,26 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Sends the read-only commands and collects their responses.
+//! Sends the read-only commands with the `imap` crate.
 
 use std::error;
 use std::fmt;
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 
-use anyhow::{Context, bail};
+use anyhow::{anyhow, bail};
+use imap_proto::NameAttribute;
 
-use crate::imap::parse::{
-    describe, is_status, is_untagged, parse_exists, parse_fetch, parse_list,
-    parse_search, parse_uidvalidity,
-};
-use crate::imap::read_only::{FETCH_ITEMS, ReadOnlyStream, command_name};
-use crate::imap::response::{Token, read_response};
+use crate::imap::read_only::{FETCH_ITEMS, ReadOnlyStream};
 use crate::imap::{FetchedHeader, Folder, FolderStatus};
+
+/// Format of `INTERNALDATE` (RFC 3501, section 9), as the store keeps it.
+const INTERNALDATE_FORMAT: &str = "%d-%b-%Y %H:%M:%S %z";
 
 /// The server refused a command, e.g. a login with a wrong password.
 #[derive(Debug)]
 pub struct CommandFailed {
     /// The name of the command, e.g. `LOGIN`.
     pub command: String,
-    /// The status response of the server, without literals.
+    /// The status response of the server.
     pub response: String,
 }
 
@@ -38,11 +37,10 @@ impl fmt::Display for CommandFailed {
 
 impl error::Error for CommandFailed {}
 
-/// An IMAP connection after the greeting of the server.
+/// An IMAP connection after the greeting of the server, before the login.
 #[derive(Debug)]
 pub struct Client<S: Read + Write> {
-    stream: BufReader<ReadOnlyStream<S>>,
-    next_tag: u32,
+    inner: imap::Client<ReadOnlyStream<S>>,
 }
 
 impl<S: Read + Write> Client<S> {
@@ -52,47 +50,56 @@ impl<S: Read + Write> Client<S> {
     ///
     /// - `stream`: The connection to the server, before its greeting.
     pub fn new(stream: S) -> anyhow::Result<Self> {
-        let mut stream = BufReader::new(ReadOnlyStream::new(stream));
-        let greeting = read_response(&mut stream)
-            .context("failed to read the greeting of the server")?;
-        if !is_untagged(&greeting, "OK") {
-            bail!("unexpected greeting: {}", describe(&greeting));
+        let mut inner = imap::Client::new(ReadOnlyStream::new(stream));
+        let greeting = inner
+            .read_greeting()
+            .map_err(|error| convert(error, "greeting"))?;
+        if !greeting.starts_with(b"* OK") {
+            let greeting = String::from_utf8_lossy(&greeting);
+            bail!("unexpected greeting: {}", greeting.trim_end());
         }
-        Ok(Self {
-            stream,
-            next_tag: 1,
-        })
+        Ok(Self { inner })
     }
 
     /// Logs in with a username and password.
     ///
     /// # Arguments
     ///
-    /// - `username`: The username, printable ASCII only.
-    /// - `password`: The password, printable ASCII only.
+    /// - `username`: The username.
+    /// - `password`: The password.
     pub fn login(
-        &mut self,
+        self,
         username: &str,
         password: &str,
-    ) -> anyhow::Result<()> {
-        let command = format!(
-            "LOGIN {} {}",
-            quote(username).context("unsupported username")?,
-            quote(password).context("unsupported password")?
-        );
-        self.run(&command, |_| Ok(()))
+    ) -> anyhow::Result<Session<S>> {
+        let inner = self
+            .inner
+            .login(username, password)
+            .map_err(|(error, _)| convert(error, "LOGIN"))?;
+        Ok(Session { inner })
     }
+}
 
+/// An IMAP connection after the login.
+#[derive(Debug)]
+pub struct Session<S: Read + Write> {
+    inner: imap::Session<ReadOnlyStream<S>>,
+}
+
+impl<S: Read + Write> Session<S> {
     /// Lists all folders.
     pub fn list(&mut self) -> anyhow::Result<Vec<Folder>> {
-        let mut folders = Vec::new();
-        self.run(r#"LIST "" "*""#, |tokens| {
-            if is_untagged(&tokens, "LIST") {
-                folders.push(parse_list(tokens)?);
-            }
-            Ok(())
-        })?;
-        Ok(folders)
+        let names = self
+            .inner
+            .list(Some(""), Some("*"))
+            .map_err(|error| convert(error, "LIST"))?;
+        Ok(names
+            .iter()
+            .map(|name| Folder {
+                name: name.name().to_owned(),
+                attributes: name.attributes().iter().map(attribute).collect(),
+            })
+            .collect())
     }
 
     /// Opens a folder read-only.
@@ -101,32 +108,27 @@ impl<S: Read + Write> Client<S> {
     ///
     /// - `folder`: The name of the folder, as the server listed it.
     pub fn examine(&mut self, folder: &str) -> anyhow::Result<FolderStatus> {
-        let mut exists = None;
-        let mut uidvalidity = None;
-        let command = format!("EXAMINE {}", quote(folder)?);
-        self.run(&command, |tokens| {
-            exists = exists.or(parse_exists(&tokens)?);
-            uidvalidity = uidvalidity.or(parse_uidvalidity(&tokens)?);
-            Ok(())
-        })?;
+        let mailbox = self
+            .inner
+            .examine(folder)
+            .map_err(|error| convert(error, "EXAMINE"))?;
         Ok(FolderStatus {
-            exists: exists.context("server sent no EXISTS")?,
-            uidvalidity: uidvalidity.context("server sent no UIDVALIDITY")?,
+            exists: mailbox.exists,
+            uidvalidity: mailbox
+                .uid_validity
+                .ok_or_else(|| anyhow!("server sent no UIDVALIDITY"))?,
         })
     }
 
     /// Returns the UIDs of all emails in the open folder, in ascending
     /// order.
     pub fn search_uids(&mut self) -> anyhow::Result<Vec<u32>> {
-        let mut uids = Vec::new();
-        self.run("UID SEARCH ALL", |tokens| {
-            if is_untagged(&tokens, "SEARCH") {
-                uids.extend(parse_search(&tokens)?);
-            }
-            Ok(())
-        })?;
+        let uids = self
+            .inner
+            .uid_search("ALL")
+            .map_err(|error| convert(error, "UID SEARCH"))?;
+        let mut uids: Vec<_> = uids.into_iter().collect();
         uids.sort_unstable();
-        uids.dedup();
         Ok(uids)
     }
 
@@ -147,101 +149,97 @@ impl<S: Read + Write> Client<S> {
             return Ok(());
         }
         let set: Vec<_> = uids.iter().map(u32::to_string).collect();
-        let command = format!("UID FETCH {} {FETCH_ITEMS}", set.join(","));
-        self.run(&command, |tokens| {
-            let is_fetch = matches!(
-                tokens.get(2),
-                Some(Token::Atom(kind)) if kind.eq_ignore_ascii_case("FETCH")
-            );
-            if tokens.first() == Some(&Token::Atom("*".into())) && is_fetch {
-                // Updates of other emails, e.g. of their flags, have no
-                // header.
-                if let Some(header) = parse_fetch(tokens)? {
-                    on_header(header)?;
-                }
-            }
-            Ok(())
-        })
+        let fetches = self
+            .inner
+            .uid_fetch(set.join(","), FETCH_ITEMS)
+            .map_err(|error| convert(error, "UID FETCH"))?;
+        for fetch in fetches.iter() {
+            // Updates of other emails, e.g. of their flags, have no
+            // header.
+            let (Some(uid), Some(header)) = (fetch.uid, fetch.header()) else {
+                continue;
+            };
+            on_header(FetchedHeader {
+                uid,
+                internaldate: fetch
+                    .internal_date()
+                    .map(|date| date.format(INTERNALDATE_FORMAT).to_string()),
+                header: header.to_vec(),
+            })?;
+        }
+        Ok(())
     }
 
     /// Logs out, after which the server closes the connection.
     pub fn logout(mut self) -> anyhow::Result<()> {
-        self.run("LOGOUT", |_| Ok(()))
-    }
-
-    /// Sends a command and passes on its untagged responses, until the
-    /// server completes the command.
-    ///
-    /// # Arguments
-    ///
-    /// - `command`: The command, without tag and line ending.
-    /// - `on_untagged`: Receives each untagged response.
-    fn run(
-        &mut self,
-        command: &str,
-        mut on_untagged: impl FnMut(Vec<Token>) -> anyhow::Result<()>,
-    ) -> anyhow::Result<()> {
-        // Never the full command, which may contain the password.
-        let name = command_name(command);
-        let tag = format!("A{}", self.next_tag);
-        self.next_tag += 1;
-        let stream = self.stream.get_mut();
-        stream
-            .write_all(format!("{tag} {command}\r\n").as_bytes())
-            .and_then(|()| stream.flush())
-            .with_context(|| format!("failed to send {name}"))?;
-        loop {
-            let tokens =
-                read_response(&mut self.stream).with_context(|| {
-                    format!("failed to read the response to {name}")
-                })?;
-            match tokens.first() {
-                Some(Token::Atom(first)) if *first == tag => {
-                    if is_status(&tokens[1..], "OK") {
-                        return Ok(());
-                    }
-                    return Err(CommandFailed {
-                        command: name.to_owned(),
-                        response: describe(&tokens[1..]),
-                    }
-                    .into());
-                }
-                Some(Token::Atom(first)) if first == "*" => {
-                    if name != "LOGOUT" && is_untagged(&tokens, "BYE") {
-                        bail!(
-                            "server closed the connection during {name}: {}",
-                            describe(&tokens[2..])
-                        );
-                    }
-                    on_untagged(tokens)?;
-                }
-                _ => bail!("unexpected response to {name}"),
-            }
-        }
+        self.inner
+            .logout()
+            .map_err(|error| convert(error, "LOGOUT"))
     }
 }
 
-/// Quotes a string for a command (RFC 3501, section 4.3).
-///
-/// Only printable ASCII is supported. That covers all folder names, as
-/// servers send them in modified UTF-7, and nearly all usernames and
-/// passwords.
+/// Returns the name of a folder attribute in lowercase, e.g. `\noselect`.
 ///
 /// # Arguments
 ///
-/// - `text`: The string to quote.
-fn quote(text: &str) -> anyhow::Result<String> {
-    if !text.bytes().all(|b| b.is_ascii() && !b.is_ascii_control()) {
-        bail!("only printable ASCII characters are supported");
+/// - `attribute`: The attribute as the `imap` crate parsed it.
+fn attribute(attribute: &NameAttribute<'_>) -> String {
+    let name = match attribute {
+        NameAttribute::NoInferiors => "\\noinferiors",
+        NameAttribute::NoSelect => "\\noselect",
+        NameAttribute::Marked => "\\marked",
+        NameAttribute::Unmarked => "\\unmarked",
+        NameAttribute::All => "\\all",
+        NameAttribute::Archive => "\\archive",
+        NameAttribute::Drafts => "\\drafts",
+        NameAttribute::Flagged => "\\flagged",
+        NameAttribute::Junk => "\\junk",
+        NameAttribute::Sent => "\\sent",
+        NameAttribute::Trash => "\\trash",
+        NameAttribute::Extension(name) => return name.to_lowercase(),
+        _ => "",
+    };
+    name.to_owned()
+}
+
+/// Converts an error of the `imap` crate into an error for the user.
+///
+/// Responses that the crate could not handle are left out, as they could
+/// contain data of an email. I/O errors stay in the chain of causes, so
+/// that hints can find them.
+///
+/// # Arguments
+///
+/// - `error`: The error of the `imap` crate.
+/// - `command`: The name of the command, e.g. `LOGIN`.
+fn convert(error: imap::Error, command: &str) -> anyhow::Error {
+    let failed = |response: String| {
+        anyhow::Error::new(CommandFailed {
+            command: command.to_owned(),
+            response,
+        })
+    };
+    match error {
+        imap::Error::Io(error) => {
+            anyhow::Error::new(error).context(format!("{command} failed"))
+        }
+        imap::Error::No(no) => failed(format!("NO {}", no.information)),
+        imap::Error::Bad(bad) => failed(format!("BAD {}", bad.information)),
+        imap::Error::Bye(bye) => anyhow!(
+            "server closed the connection during {command}: {}",
+            bye.information
+        ),
+        imap::Error::Unexpected(_) | imap::Error::TagMismatch(_) => {
+            anyhow!("unexpected response to {command}")
+        }
+        error => anyhow::Error::new(error).context(format!("{command} failed")),
     }
-    let escaped = text.replace('\\', r"\\").replace('"', r#"\""#);
-    Ok(format!("\"{escaped}\""))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{FakeServer, fake_client as client};
+    use crate::test_util::{FakeServer, fake_client, fake_session};
 
     /// Returns a folder.
     ///
@@ -265,20 +263,21 @@ mod tests {
 
     #[test]
     fn logs_in_with_quoted_credentials() {
-        let (mut client, sent) = client(b"A1 OK LOGIN completed\r\n");
+        let (client, sent) = fake_client(b"a1 OK LOGIN completed\r\n");
         client
             .login("me@example.com", r#"pa"ss\word"#)
             .expect("login should succeed");
         assert_eq!(
             sent.text(),
-            "A1 LOGIN \"me@example.com\" \"pa\\\"ss\\\\word\"\r\n"
+            "a1 LOGIN \"me@example.com\" \"pa\\\"ss\\\\word\"\r\n"
         );
     }
 
     #[test]
     fn reports_failed_login_without_the_password() {
-        let (mut client, _) =
-            client(b"A1 NO [AUTHENTICATIONFAILED] Invalid credentials\r\n");
+        let (client, _) = fake_client(
+            b"a1 NO [AUTHENTICATIONFAILED] Invalid credentials\r\n",
+        );
         let error = client
             .login("me@example.com", "secret")
             .expect_err("login should fail");
@@ -293,26 +292,22 @@ mod tests {
     }
 
     #[test]
-    fn refuses_to_send_unsupported_credentials() {
-        let (mut client, sent) = client(b"");
-        for (username, password) in [("me", "pässword"), ("me\r\n", "x")] {
-            client
-                .login(username, password)
-                .expect_err("login should fail");
-        }
+    fn refuses_to_send_line_breaks_in_credentials() {
+        let (client, sent) = fake_client(b"");
+        client.login("me\r\n", "x").expect_err("login should fail");
         assert_eq!(sent.text(), "");
     }
 
     #[test]
     fn lists_folders() {
-        let (mut client, sent) = client(
+        let (mut session, sent) = fake_session(
             b"* LIST (\\HasNoChildren) \"/\" INBOX\r\n\
               * LIST (\\HasNoChildren \\Trash) \"/\" \"Deleted Items\"\r\n\
               * LIST (\\Noselect) NIL {4}\r\nWork\r\n\
-              A1 OK LIST completed\r\n",
+              a2 OK LIST completed\r\n",
         );
-        let folders = client.list().expect("LIST should succeed");
-        assert_eq!(sent.text(), "A1 LIST \"\" \"*\"\r\n");
+        let folders = session.list().expect("LIST should succeed");
+        assert_eq!(sent.text(), "a2 LIST \"\" *\r\n");
         assert_eq!(
             folders,
             [
@@ -325,17 +320,17 @@ mod tests {
 
     #[test]
     fn examines_folder() {
-        let (mut client, sent) = client(
+        let (mut session, sent) = fake_session(
             b"* FLAGS (\\Answered \\Seen)\r\n\
               * 172 EXISTS\r\n\
               * OK [UIDVALIDITY 3857529045] UIDs valid\r\n\
               * OK [UIDNEXT 4392] Predicted next UID\r\n\
-              A1 OK [READ-ONLY] EXAMINE completed\r\n",
+              a2 OK [READ-ONLY] EXAMINE completed\r\n",
         );
-        let status = client
+        let status = session
             .examine("Sent Items")
             .expect("EXAMINE should succeed");
-        assert_eq!(sent.text(), "A1 EXAMINE \"Sent Items\"\r\n");
+        assert_eq!(sent.text(), "a2 EXAMINE \"Sent Items\"\r\n");
         assert_eq!(
             status,
             FolderStatus {
@@ -347,18 +342,18 @@ mod tests {
 
     #[test]
     fn rejects_examine_without_uidvalidity() {
-        let (mut client, _) = client(b"* 1 EXISTS\r\nA1 OK done\r\n");
-        let error = client.examine("INBOX").expect_err("EXAMINE should fail");
+        let (mut session, _) = fake_session(b"* 1 EXISTS\r\na2 OK done\r\n");
+        let error = session.examine("INBOX").expect_err("EXAMINE should fail");
         assert_eq!(error.to_string(), "server sent no UIDVALIDITY");
     }
 
     #[test]
     fn searches_uids_in_ascending_order() {
-        let (mut client, sent) = client(
-            b"* SEARCH 5 3\r\n* SEARCH 4 3\r\nA1 OK SEARCH completed\r\n",
+        let (mut session, sent) = fake_session(
+            b"* SEARCH 5 3\r\n* SEARCH 4\r\na2 OK SEARCH completed\r\n",
         );
-        let uids = client.search_uids().expect("SEARCH should succeed");
-        assert_eq!(sent.text(), "A1 UID SEARCH ALL\r\n");
+        let uids = session.search_uids().expect("SEARCH should succeed");
+        assert_eq!(sent.text(), "a2 UID SEARCH ALL\r\n");
         assert_eq!(uids, [3, 4, 5]);
     }
 
@@ -366,15 +361,15 @@ mod tests {
     fn fetches_headers() {
         // The second email has its items in another order and flags, the
         // third response is an unsolicited flag update without a header.
-        let (mut client, sent) = client(
+        let (mut session, sent) = fake_session(
             b"* 1 FETCH (UID 7 INTERNALDATE \"17-Jul-1996 02:44:25 -0700\" \
               BODY[HEADER] {8}\r\nA: b\r\n\r\n)\r\n\
-              * 2 FETCH (BODY[HEADER] \"C: d\" FLAGS (\\Seen (x)) UID 9)\r\n\
+              * 2 FETCH (BODY[HEADER] \"C: d\" FLAGS (\\Seen) UID 9)\r\n\
               * 3 FETCH (UID 10 FLAGS (\\Flagged))\r\n\
-              A1 OK FETCH completed\r\n",
+              a2 OK FETCH completed\r\n",
         );
         let mut headers = Vec::new();
-        client
+        session
             .fetch_headers(&[7, 9], |header| {
                 headers.push(header);
                 Ok(())
@@ -382,7 +377,7 @@ mod tests {
             .expect("FETCH should succeed");
         assert_eq!(
             sent.text(),
-            "A1 UID FETCH 7,9 (UID INTERNALDATE BODY.PEEK[HEADER])\r\n"
+            "a2 UID FETCH 7,9 (UID INTERNALDATE BODY.PEEK[HEADER])\r\n"
         );
         assert_eq!(
             headers,
@@ -403,35 +398,24 @@ mod tests {
 
     #[test]
     fn fetches_nothing_without_uids() {
-        let (mut client, sent) = client(b"");
-        client
+        let (mut session, sent) = fake_session(b"");
+        session
             .fetch_headers(&[], |_| panic!("no header expected"))
             .expect("FETCH should succeed");
         assert_eq!(sent.text(), "");
     }
 
     #[test]
-    fn rejects_bye_during_command() {
-        let (mut client, _) = client(b"* BYE shutting down\r\n");
-        let error = client.list().expect_err("LIST should fail");
-        assert_eq!(
-            error.to_string(),
-            "server closed the connection during LIST: shutting down"
-        );
+    fn fails_when_the_server_closes_the_connection() {
+        let (mut session, _) = fake_session(b"* BYE shutting down\r\n");
+        let error = session.list().expect_err("LIST should fail");
+        assert_eq!(format!("{error:#}"), "LIST failed: Connection Lost");
     }
 
     #[test]
     fn logs_out_with_bye() {
-        let (client, _sent) =
-            client(b"* BYE logging out\r\nA1 OK LOGOUT done\r\n");
-        client.logout().expect("LOGOUT should succeed");
-    }
-
-    #[test]
-    fn increments_tags() {
-        let (mut client, sent) = client(b"A1 OK done\r\nA2 OK done\r\n");
-        client.login("a", "b").expect("login should succeed");
-        client.list().expect("LIST should succeed");
-        assert!(sent.text().contains("\r\nA2 LIST"), "{}", sent.text());
+        let (session, _) =
+            fake_session(b"* BYE logging out\r\na2 OK LOGOUT done\r\n");
+        session.logout().expect("LOGOUT should succeed");
     }
 }

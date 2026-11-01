@@ -123,7 +123,7 @@ fn check_line(line: &[u8]) -> io::Result<()> {
 /// # Arguments
 ///
 /// - `command`: The command, without tag and line ending.
-pub(super) fn command_name(command: &str) -> &str {
+fn command_name(command: &str) -> &str {
     let words = if command.starts_with("UID ") { 2 } else { 1 };
     let end = command
         .match_indices(' ')
