@@ -2,3 +2,5 @@
 *.sh text eol=lf
 # Generated on every OS with LF, compared in CI.
 examples/demo/report/** text eol=lf
+# Written into every report, which must be the same on every OS.
+src/report/*.txt text eol=lf

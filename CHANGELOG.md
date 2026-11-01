@@ -18,6 +18,7 @@
   emails per category, and the top senders and the top recipients of sent
   emails, in total and per year. Complete lists of all senders and
   recipients help to find the emails to clean up. They are also written as
-  CSV files, for spreadsheets.
+  CSV files, for spreadsheets. `README.txt` and `LIESMICH.txt` (German)
+  explain the files of the report, and how to clean up with them.
   It states when it was generated, in UTC.
   If pandoc is installed, it also writes the report as PDF.

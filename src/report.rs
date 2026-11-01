@@ -30,6 +30,12 @@ const SENDERS_CHART: &str = "top-senders.svg";
 const RECIPIENTS_CHART: &str = "top-recipients.svg";
 const SENDERS_CSV: &str = "senders.csv";
 const RECIPIENTS_CSV: &str = "recipients.csv";
+/// Explanations of the files of the report, and how to clean up with it,
+/// in English and German.
+const GUIDES: [(&str, &str); 2] = [
+    ("README.txt", include_str!("report/README.txt")),
+    ("LIESMICH.txt", include_str!("report/LIESMICH.txt")),
+];
 /// Format of the time of the report: RFC 3339 in UTC, with a space
 /// instead of the `T`, which RFC 3339 allows for readability, so that
 /// people and programs can read it, e.g. `2026-11-01 13:45:07Z`.
@@ -138,6 +144,9 @@ fn render(
     markdown.extend(all_recipients(&recipients));
     files.push((SENDERS_CSV, senders_csv(&senders)));
     files.push((RECIPIENTS_CSV, recipients_csv(&recipients)));
+    for (file, guide) in GUIDES {
+        files.push((file, guide.to_owned()));
+    }
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
 }

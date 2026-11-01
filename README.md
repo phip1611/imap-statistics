@@ -40,10 +40,12 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    report still covers its emails of earlier runs, but the run fails at
    the end.
 
-   The report is written to `report/report.md` in the data directory, with SVG
-   charts and CSV files of all senders and recipients next to it.
-   `--output <dir>` writes it elsewhere, and `--top <n>` sets the number
-   of senders and recipients in each list of top ones (default: 5).
+   The report is written to `report/report.md` in the data directory, with
+   SVG charts and CSV files of all senders and recipients next to it.
+   `README.txt` and `LIESMICH.txt` (German) explain these files, and how to
+   clean up with them. `--output <dir>` writes the report elsewhere, and
+   `--top <n>` sets the number of senders and recipients in each list of
+   top ones (default: 5).
 
    The report states when it was generated, in UTC. If set,
    `SOURCE_DATE_EPOCH` (seconds since 1970) overrides that time, e.g. for

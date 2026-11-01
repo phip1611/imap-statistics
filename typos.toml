@@ -1,3 +1,4 @@
 [files]
-# Words of many languages that sort emails into categories.
-extend-exclude = ["src/category/rules.rs"]
+# Words of many languages that sort emails into categories, and the German
+# guide of the report.
+extend-exclude = ["src/category/rules.rs", "LIESMICH.txt"]
