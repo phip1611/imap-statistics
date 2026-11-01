@@ -38,10 +38,13 @@ pub struct Summary {
 pub fn fetch_source(
     source: &Source,
     data_dir: &Path,
-    progress: impl FnMut(&str),
+    mut progress: impl FnMut(&str),
 ) -> anyhow::Result<Summary> {
+    progress("reading the stored headers");
     let mut store = Store::open(&data_dir.join(&source.name))?;
+    progress("connecting");
     let mut client = imap::connect(&source.host, source.port)?;
+    progress("logging in");
     client.login(&source.username, source.password.expose())?;
     let summary = fetch(&mut client, &mut store, progress)?;
     client.logout()?;
@@ -63,7 +66,9 @@ pub fn fetch<S: Read + Write>(
     store: &mut Store,
     mut progress: impl FnMut(&str),
 ) -> anyhow::Result<Summary> {
+    progress("listing the folders");
     let folders = imap::select_folders(client.list()?);
+    progress(&format!("{} folders to fetch", folders.len()));
     let mut summary = Summary {
         folders: folders.len(),
         ..Summary::default()
@@ -110,6 +115,8 @@ fn fetch_folder<S: Read + Write>(
     let uids = if status.exists == 0 {
         Vec::new()
     } else {
+        // Takes a while for large folders, e.g. "All Mail" of Gmail.
+        progress(&format!("searching {} emails", status.exists));
         client.search_uids()?
     };
     let missing = store.missing(folder, status.uidvalidity, &uids);
@@ -211,6 +218,9 @@ mod tests {
         assert_eq!(
             messages,
             [
+                "listing the folders",
+                "2 folders to fetch",
+                "folder 1 of 2: searching 2 emails",
                 "folder 1 of 2: 2 emails, 2 new",
                 "folder 2 of 2: 0 emails, 0 new"
             ]
