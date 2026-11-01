@@ -7,7 +7,8 @@
 //! folders are opened with `EXAMINE` instead of `SELECT`, and headers are
 //! fetched with `BODY.PEEK[HEADER]`, which unlike `BODY[HEADER]` does not
 //! set `\Seen` (RFC 3501, section 6.4.5). As a second line of defense,
-//! [`check_read_only`] refuses every other command before it is sent.
+//! [`ReadOnlyStream`] checks every command line with [`check_read_only`]
+//! and refuses every other command before it reaches the server.
 //!
 //! The submodules read the responses of the server ([`response`]), parse
 //! them (`parse`), send the commands (`client`), guard them
@@ -24,7 +25,7 @@ pub mod response;
 pub use client::{Client, CommandFailed};
 pub use connection::{TlsStream, connect};
 pub use folders::select_folders;
-pub use read_only::check_read_only;
+pub use read_only::{ReadOnlyStream, check_read_only};
 
 /// A folder as listed by the server.
 #[derive(Debug, Clone, PartialEq, Eq)]

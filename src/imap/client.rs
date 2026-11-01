@@ -12,7 +12,7 @@ use crate::imap::parse::{
     describe, is_status, is_untagged, parse_exists, parse_fetch, parse_list,
     parse_search, parse_uidvalidity,
 };
-use crate::imap::read_only::{FETCH_ITEMS, check_read_only, command_name};
+use crate::imap::read_only::{FETCH_ITEMS, ReadOnlyStream, command_name};
 use crate::imap::response::{Token, read_response};
 use crate::imap::{FetchedHeader, Folder, FolderStatus};
 
@@ -41,7 +41,7 @@ impl error::Error for CommandFailed {}
 /// An IMAP connection after the greeting of the server.
 #[derive(Debug)]
 pub struct Client<S: Read + Write> {
-    stream: BufReader<S>,
+    stream: BufReader<ReadOnlyStream<S>>,
     next_tag: u32,
 }
 
@@ -52,7 +52,7 @@ impl<S: Read + Write> Client<S> {
     ///
     /// - `stream`: The connection to the server, before its greeting.
     pub fn new(stream: S) -> anyhow::Result<Self> {
-        let mut stream = BufReader::new(stream);
+        let mut stream = BufReader::new(ReadOnlyStream::new(stream));
         let greeting = read_response(&mut stream)
             .context("failed to read the greeting of the server")?;
         if !is_untagged(&greeting, "OK") {
@@ -181,7 +181,6 @@ impl<S: Read + Write> Client<S> {
         command: &str,
         mut on_untagged: impl FnMut(Vec<Token>) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
-        check_read_only(command)?;
         // Never the full command, which may contain the password.
         let name = command_name(command);
         let tag = format!("A{}", self.next_tag);
