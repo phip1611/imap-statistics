@@ -67,16 +67,20 @@ several folders or sources count once. The year is in UTC, from the
 implausible.
 
 The categories come from simple rules on the headers, never the content,
-so a few emails end up in the wrong category. The first matching rule
+so a few emails end up in the wrong category. Each category has a list of
+over 100 sender domains, sender addresses, and subject words, in English,
+German, Polish, French, Spanish, Italian, and Dutch, in
+[`src/category/rules.rs`](src/category/rules.rs). The first matching rule
 wins:
 
-1. `social`: from a social network, e.g. `facebookmail.com`.
-2. `newsletter`: from a mailing list or newsletter (`List-Id`,
-   `List-Unsubscribe`, or `Precedence: bulk`).
-3. `shopping`: the subject is about an order, invoice, or delivery, in
-   English or German.
+1. `social`: from a social network or dating site, e.g.
+   `facebookmail.com`.
+2. `newsletter`: from a mailing list (`List-Id`, `List-Unsubscribe`, or
+   `Precedence: bulk`), or advertising, e.g. "Black Friday".
+3. `shopping`: about an order, invoice, payment, or delivery, e.g. from a
+   parcel service.
 4. `notification`: sent by a program (`Auto-Submitted`, or an address such
-   as `noreply@`).
+   as `noreply@`), e.g. a security code or a bounce.
 5. `personal`: everything else.
 
 ## License

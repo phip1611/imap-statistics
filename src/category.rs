@@ -6,60 +6,14 @@
 //! mailing lists and programs add, never at the content. They are simple
 //! on purpose: for statistics, a few emails in the wrong category are
 //! fine. The first rule that matches wins, in the order of [`Category`].
+//! The senders and words of each category are in [`rules`].
+
+pub mod rules;
 
 use serde::{Deserialize, Serialize};
 
+use crate::category::rules::Rules;
 use crate::email::Email;
-
-/// Domains of social networks, also matching their subdomains.
-const SOCIAL_DOMAINS: &[&str] = &[
-    "discord.com",
-    "facebook.com",
-    "facebookmail.com",
-    "instagram.com",
-    "linkedin.com",
-    "pinterest.com",
-    "reddit.com",
-    "redditmail.com",
-    "tiktok.com",
-    "twitter.com",
-    "x.com",
-    "xing.com",
-    "youtube.com",
-];
-
-/// Starts of words in subjects of orders, invoices, and deliveries, in
-/// English and German, in lowercase.
-const SHOPPING_WORDS: &[&str] = &[
-    "bestell",
-    "delivery",
-    "invoice",
-    "lieferung",
-    "order",
-    "payment",
-    "purchase",
-    "quittung",
-    "receipt",
-    "rechnung",
-    "sendung",
-    "shipment",
-    "shipped",
-    "versand",
-    "zahlung",
-];
-
-/// Local parts of addresses that programs send from, in lowercase.
-const AUTOMATIC_SENDERS: &[&str] = &[
-    "donotreply",
-    "do-not-reply",
-    "mailer-daemon",
-    "no-reply",
-    "noreply",
-    "notification",
-    "notifications",
-    "notify",
-    "postmaster",
-];
 
 /// A coarse category of emails.
 #[derive(
@@ -120,23 +74,27 @@ impl Category {
         let address = email.sender.as_ref().map_or("", |s| s.address.as_str());
         let (local_part, domain) =
             address.rsplit_once('@').unwrap_or((address, ""));
-        if SOCIAL_DOMAINS
-            .iter()
-            .any(|&social| is_domain_of(domain, social))
-        {
-            Self::Social
-        } else if email.list
+        let subject = normalize(&email.subject);
+        let words: Vec<&str> = subject.split(' ').collect();
+        let matches = |rules: &Rules| {
+            rules.domains.iter().any(|d| is_domain_of(domain, d))
+                || rules.senders.iter().any(|s| is_sender(local_part, s))
+                || rules.words.iter().any(|w| has_words(&words, w))
+        };
+        let list = email.list
             || matches!(
                 email.precedence.as_deref(),
                 Some("bulk" | "list" | "junk")
-            )
-        {
+            );
+        let automatic =
+            email.auto_submitted.as_deref().is_some_and(|v| v != "no");
+        if matches(&rules::SOCIAL) {
+            Self::Social
+        } else if list || matches(&rules::NEWSLETTER) {
             Self::Newsletter
-        } else if has_shopping_word(&email.subject) {
+        } else if matches(&rules::SHOPPING) {
             Self::Shopping
-        } else if email.auto_submitted.as_deref().is_some_and(|v| v != "no")
-            || AUTOMATIC_SENDERS.contains(&base_local_part(local_part))
-        {
+        } else if automatic || matches(&rules::NOTIFICATION) {
             Self::Notification
         } else {
             Self::Personal
@@ -157,39 +115,71 @@ fn is_domain_of(domain: &str, parent: &str) -> bool {
             .is_some_and(|sub| sub.ends_with('.'))
 }
 
-/// Checks whether a word of a subject starts with a shopping word.
+/// Checks whether a local part is a sender, also with a tag.
 ///
-/// E.g. "Versandbestätigung" and "orders" match, but "Border" does not.
-///
-/// # Arguments
-///
-/// - `subject`: The subject of an email.
-fn has_shopping_word(subject: &str) -> bool {
-    subject
-        .to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .any(|word| SHOPPING_WORDS.iter().any(|&w| word.starts_with(w)))
-}
-
-/// Strips a tag, e.g. returns `noreply` of `noreply+news`.
+/// E.g. `noreply`, `noreply-shop`, and `noreply+news` are the sender
+/// `noreply`, but `noreplyfan` is not.
 ///
 /// # Arguments
 ///
 /// - `local_part`: The part of an address before the `@`.
-fn base_local_part(local_part: &str) -> &str {
-    AUTOMATIC_SENDERS
-        .iter()
-        .copied()
-        .find(|&sender| {
-            local_part.strip_prefix(sender).is_some_and(|rest| {
-                rest.is_empty() || rest.starts_with(['+', '-', '.', '_'])
+/// - `sender`: The sender of a rule.
+fn is_sender(local_part: &str, sender: &str) -> bool {
+    local_part.strip_prefix(sender).is_some_and(|rest| {
+        rest.is_empty() || rest.starts_with(['+', '-', '.', '_'])
+    })
+}
+
+/// Checks whether words contain a word or phrase of a rule.
+///
+/// # Arguments
+///
+/// - `words`: The normalized words of a subject.
+/// - `rule`: A word or phrase, which matches the start of its last word
+///   if it ends with `*`.
+fn has_words(words: &[&str], rule: &str) -> bool {
+    let (phrase, prefix) = rule
+        .strip_suffix('*')
+        .map_or((rule, false), |phrase| (phrase, true));
+    let wanted: Vec<&str> = phrase.split(' ').collect();
+    words.windows(wanted.len()).any(|window| {
+        window
+            .iter()
+            .zip(&wanted)
+            .enumerate()
+            .all(|(i, (word, want))| {
+                if prefix && i == wanted.len() - 1 {
+                    word.starts_with(want)
+                } else {
+                    word == want
+                }
             })
-        })
-        .unwrap_or(local_part)
+    })
+}
+
+/// Normalizes text for word matching.
+///
+/// Lowercases it, removes apostrophes, e.g. "don't" becomes "dont", and
+/// turns all other characters that are no letters or digits into single
+/// spaces between words.
+///
+/// # Arguments
+///
+/// - `text`: The text, e.g. a subject.
+fn normalize(text: &str) -> String {
+    let cleaned: String = text
+        .to_lowercase()
+        .chars()
+        .filter(|&c| c != '\'' && c != '’')
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::email::Sender;
 
@@ -271,13 +261,49 @@ mod tests {
                 "{from}"
             );
         }
-        let mut auto = email("robot@example.com", "Backup done");
+        let mut auto = email("jane@example.com", "Hi");
         auto.auto_submitted = Some("auto-generated".into());
         assert_eq!(Category::of(&auto), Category::Notification);
         auto.auto_submitted = Some("no".into());
         assert_eq!(Category::of(&auto), Category::Personal);
         let person = email("noreplyfan@example.com", "Hi");
         assert_eq!(Category::of(&person), Category::Personal);
+    }
+
+    #[test]
+    fn matches_whole_words_unless_a_rule_ends_with_a_star() {
+        let category = |subject| Category::of(&email("a@b.example", subject));
+        assert_eq!(category("Sales report Q3"), Category::Personal);
+        assert_eq!(category("Big SALE today"), Category::Newsletter);
+        assert_eq!(category("Ihre Bestellbestätigung"), Category::Shopping);
+        assert_eq!(category("Don't miss our offers!"), Category::Newsletter);
+        assert_eq!(category("Your sign-in code"), Category::Notification);
+    }
+
+    #[test]
+    fn rules_are_normalized_unique_and_at_least_100_per_category() {
+        for (category, rules) in [
+            (Category::Social, &rules::SOCIAL),
+            (Category::Newsletter, &rules::NEWSLETTER),
+            (Category::Shopping, &rules::SHOPPING),
+            (Category::Notification, &rules::NOTIFICATION),
+        ] {
+            let all: Vec<&str> =
+                [rules.domains, rules.senders, rules.words].concat();
+            let unique: HashSet<&str> = all.iter().copied().collect();
+            assert!(unique.len() >= 100, "{category:?}: {}", unique.len());
+            for list in [rules.domains, rules.senders, rules.words] {
+                let set: HashSet<_> = list.iter().collect();
+                assert_eq!(set.len(), list.len(), "{category:?}: duplicates");
+            }
+            for &entry in &all {
+                assert_eq!(entry, entry.to_lowercase(), "{entry}");
+            }
+            for &word in rules.words {
+                let phrase = word.strip_suffix('*').unwrap_or(word);
+                assert_eq!(normalize(phrase), phrase, "{word}");
+            }
+        }
     }
 
     #[test]
