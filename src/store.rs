@@ -41,6 +41,10 @@ pub struct StoredHeader {
 pub struct FolderState {
     pub uidvalidity: u32,
     pub uids: Vec<u32>,
+    /// Whether the folder holds sent emails (`\Sent`, RFC 6154). False in
+    /// stores of older versions, until the next fetch.
+    #[serde(default)]
+    pub sent: bool,
 }
 
 /// Identifies a stored header.
@@ -182,18 +186,7 @@ impl Store {
 ///
 /// - `dir`: The directory of the source in the data directory.
 pub fn load(dir: &Path) -> anyhow::Result<Vec<StoredHeader>> {
-    let path = dir.join(FOLDERS_FILE);
-    let folders: BTreeMap<String, FolderState> = match fs::read(&path) {
-        Ok(json) => serde_json::from_slice(&json)
-            .with_context(|| format!("invalid {}", path.display()))?,
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            return Ok(Vec::new());
-        }
-        Err(error) => {
-            return Err(error)
-                .with_context(|| format!("failed to read {}", path.display()));
-        }
-    };
+    let folders = read_folders(dir)?;
     let mut current: HashSet<Key> = folders
         .into_iter()
         .flat_map(|(folder, state)| {
@@ -219,6 +212,39 @@ pub fn load(dir: &Path) -> anyhow::Result<Vec<StoredHeader>> {
         Ok(())
     })?;
     Ok(headers)
+}
+
+/// Returns the names of the folders that hold sent emails.
+///
+/// # Arguments
+///
+/// - `dir`: The directory of the source in the data directory.
+pub fn sent_folders(dir: &Path) -> anyhow::Result<HashSet<String>> {
+    Ok(read_folders(dir)?
+        .into_iter()
+        .filter(|(_, state)| state.sent)
+        .map(|(name, _)| name)
+        .collect())
+}
+
+/// Reads the emails of all folders at the end of the last complete fetch.
+///
+/// Returns no folders before the first fetch.
+///
+/// # Arguments
+///
+/// - `dir`: The directory of the source in the data directory.
+fn read_folders(dir: &Path) -> anyhow::Result<BTreeMap<String, FolderState>> {
+    let path = dir.join(FOLDERS_FILE);
+    match fs::read(&path) {
+        Ok(json) => serde_json::from_slice(&json)
+            .with_context(|| format!("invalid {}", path.display())),
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            Ok(BTreeMap::new())
+        }
+        Err(error) => Err(error)
+            .with_context(|| format!("failed to read {}", path.display())),
+    }
 }
 
 /// Returns the keys of all stored headers and the length of their lines.
@@ -297,6 +323,8 @@ mod tests {
 
     /// Returns the emails of folders, as the server would list them.
     ///
+    /// The folder `Sent` holds sent emails.
+    ///
     /// # Arguments
     ///
     /// - `entries`: The name, UIDVALIDITY, and UIDs of each folder.
@@ -309,6 +337,7 @@ mod tests {
                 let state = FolderState {
                     uidvalidity,
                     uids: uids.to_vec(),
+                    sent: name == "Sent",
                 };
                 (name.to_owned(), state)
             })
@@ -427,6 +456,37 @@ mod tests {
         assert_eq!(
             loaded(dir.path()),
             [("INBOX".into(), 1), ("INBOX".into(), 2)]
+        );
+    }
+
+    #[test]
+    fn records_which_folders_hold_sent_emails() {
+        let dir = TempDir::new("store-sent");
+        assert!(
+            sent_folders(dir.path())
+                .expect("store should load")
+                .is_empty()
+        );
+        let mut store = Store::open(dir.path()).expect("store should open");
+        store
+            .save_folders(&folders(&[("INBOX", 1, &[1]), ("Sent", 1, &[1])]))
+            .expect("save should work");
+        let sent = sent_folders(dir.path()).expect("store should load");
+        assert_eq!(sent, HashSet::from(["Sent".to_owned()]));
+    }
+
+    #[test]
+    fn reads_folders_of_older_versions_as_not_sent() {
+        let dir = TempDir::new("store-old");
+        fs::write(
+            dir.path().join(FOLDERS_FILE),
+            r#"{"Sent":{"uidvalidity":1,"uids":[1]}}"#,
+        )
+        .expect("write should work");
+        assert!(
+            sent_folders(dir.path())
+                .expect("store should load")
+                .is_empty()
         );
     }
 

@@ -6,8 +6,11 @@
   It reports every step, and the time left for large folders.
   For common errors, such as a rejected login, it shows how to fix them.
 - `index` builds the index of all fetched emails, with their year, sender,
-  and category.
-- `report` generates a Markdown report with SVG charts: emails per account,
-  per year, per category, and the top senders.
+  category, and whether they were received or sent. Emails from an own
+  address (the username or `addresses` in the config) or in a Sent folder
+  count as sent.
+- `report` generates a Markdown report with SVG charts: received and sent
+  emails per account and per year, received emails per category, the top
+  senders, and the top recipients of sent emails.
   It states when it was generated, in UTC.
   If pandoc is installed, it also writes the report as PDF.

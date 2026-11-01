@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+  viewBox="0 0 720 120" width="720" height="120"
+  aria-label="Top 4 recipients">
+<title>Top 4 recipients</title>
+<style>
+.bar { fill: #2a78d6 }
+.bar2 { fill: #eb6834 }
+.grid { stroke: #e1e0d9; stroke-width: 1 }
+.axis { stroke: #c3c2b7; stroke-width: 1 }
+text { fill: #52514e; font: 12px system-ui, -apple-system, "Segoe UI", sans-serif }
+@media (prefers-color-scheme: dark) {
+  .bar { fill: #3987e5 }
+  .bar2 { fill: #d95926 }
+  .grid { stroke: #2c2c2a }
+  .axis { stroke: #383835 }
+  text { fill: #c3c2b7 }
+}
+</style>
+<line class="axis" x1="196" x2="196" y1="8" y2="112"/><text x="188" y="25.0" text-anchor="end">ben.miller@example.com</text><path class="bar" d="M196.00,13.00H652.00Q656.00,13.00 656.00,17.00V25.00Q656.00,29.00 652.00,29.00H196.00Z"><title>ben.miller@example.com: 754</title></path><text x="662.0" y="25.0">754</text><text x="188" y="51.0" text-anchor="end">chen.li@example.net</text><path class="bar" d="M196.00,39.00H652.00Q656.00,39.00 656.00,43.00V51.00Q656.00,55.00 652.00,55.00H196.00Z"><title>chen.li@example.net: 754</title></path><text x="662.0" y="51.0">754</text><text x="188" y="77.0" text-anchor="end">anna.schmidt@example.org</text><path class="bar" d="M196.00,65.00H335.98Q339.98,65.00 339.98,69.00V77.00Q339.98,81.00 335.98,81.00H196.00Z"><title>anna.schmidt@example.org: 236</title></path><text x="346.0" y="77.0">236</text><text x="188" y="103.0" text-anchor="end">team@example.com</text><path class="bar" d="M196.00,91.00H290.83Q294.83,91.00 294.83,95.00V103.00Q294.83,107.00 290.83,107.00H196.00Z"><title>team@example.com: 162</title></path><text x="300.8" y="103.0">162</text>
+</svg>

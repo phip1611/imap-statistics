@@ -4,7 +4,7 @@
 //! charts next to it.
 
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::mem;
 use std::path::Path;
@@ -21,11 +21,12 @@ pub const REPORT_FILE: &str = "report.md";
 const YEARS_CHART: &str = "emails-per-year.svg";
 const CATEGORIES_CHART: &str = "emails-per-category.svg";
 const SENDERS_CHART: &str = "top-senders.svg";
+const RECIPIENTS_CHART: &str = "top-recipients.svg";
 /// Format of the time of the report: RFC 3339 in UTC, with a space
 /// instead of the `T`, which RFC 3339 allows for readability, so that
 /// people and programs can read it, e.g. `2026-11-01 13:45:07Z`.
 const GENERATED_FORMAT: &str = "%Y-%m-%d %H:%M:%SZ";
-/// Senders in the chart. More would make it too high to read.
+/// Senders or recipients in a chart. More would make it too high to read.
 const CHART_SENDERS: usize = 20;
 /// Paragraphs of the Markdown source are wrapped at this width, so that the
 /// report reads well as plain text too. Tables may be wider.
@@ -90,9 +91,12 @@ fn render(
     )));
     markdown.extend(accounts(index, sources));
     let mut files = Vec::new();
-    for (section, chart) in
-        [years(index), categories(index), senders(index, top)]
-    {
+    for (section, chart) in [
+        years(index),
+        categories(index),
+        senders(index, top),
+        recipients(index, sources, top),
+    ] {
         markdown.extend(section);
         files.push(chart);
     }
@@ -109,25 +113,32 @@ fn render(
 fn accounts(index: &Index, sources: &[Source]) -> Vec<String> {
     let mut lines = vec!["## Accounts".to_owned(), String::new()];
     lines.extend(table(
-        &["Account", "Address", "Server", "Emails"],
-        &[3],
+        &["Account", "Address", "Server", "Received", "Sent"],
+        &[3, 4],
         sources.iter().map(|source| {
-            let emails = index
-                .emails
-                .iter()
-                .filter(|email| email.sources.contains(&source.name))
-                .count();
+            let (mut received, mut sent) = (0, 0);
+            for email in &index.emails {
+                if email.sources.contains(&source.name) {
+                    if email.sent {
+                        sent += 1;
+                    } else {
+                        received += 1;
+                    }
+                }
+            }
             vec![
                 escape(&source.name),
                 escape(&source.username),
                 escape(&format!("{}:{}", source.host, source.port)),
-                number(emails as u64),
+                number(received),
+                number(sent),
             ]
         }),
     ));
     lines.extend(paragraph(
         "An email in several accounts counts once in the other sections, \
-         but for each account here.",
+         but for each account here. An email counts as sent if it came from \
+         an address of an account, or is in a Sent folder.",
     ));
     lines
 }
@@ -138,20 +149,26 @@ fn accounts(index: &Index, sources: &[Source]) -> Vec<String> {
 ///
 /// - `index`: The index of all emails.
 fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
-    let mut counts = BTreeMap::new();
-    for year in index.emails.iter().filter_map(|email| email.year) {
-        *counts.entry(year).or_insert(0) += 1;
+    // Received and sent emails per year.
+    let mut counts: BTreeMap<i64, [u64; 2]> = BTreeMap::new();
+    for email in &index.emails {
+        if let Some(year) = email.year {
+            counts.entry(year).or_default()[usize::from(email.sent)] += 1;
+        }
     }
     // Every year from the first to the last, so that gaps show.
     let data: Vec<_> = match (counts.keys().next(), counts.keys().next_back()) {
         (Some(&first), Some(&last)) => (first..=last)
             .map(|year| {
-                (year.to_string(), counts.get(&year).copied().unwrap_or(0))
+                let [received, sent] =
+                    counts.get(&year).copied().unwrap_or_default();
+                (year.to_string(), vec![received, sent])
             })
             .collect(),
         _ => Vec::new(),
     };
-    let undated = index.emails.len() - counts.values().sum::<u64>() as usize;
+    let dated: u64 = counts.values().flatten().sum();
+    let undated = index.emails.len() as u64 - dated;
     let mut lines = vec![
         "## Emails per year".to_owned(),
         String::new(),
@@ -159,18 +176,19 @@ fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
         String::new(),
     ];
     lines.extend(table(
-        &["Year", "Emails"],
-        &[1],
-        data.iter()
-            .map(|(year, count)| vec![year.clone(), number(*count)]),
+        &["Year", "Received", "Sent"],
+        &[1, 2],
+        data.iter().map(|(year, counts)| {
+            vec![year.clone(), number(counts[0]), number(counts[1])]
+        }),
     ));
     if undated > 0 {
         lines.extend(paragraph(&format!(
             "Left out for lack of a usable date: {}.",
-            count(undated as u64, "email", "emails")
+            count(undated, "email", "emails")
         )));
     }
-    let chart = svg::columns("Emails per year", &data);
+    let chart = svg::columns("Emails per year", &["Received", "Sent"], &data);
     (lines, (YEARS_CHART, chart))
 }
 
@@ -184,14 +202,16 @@ fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
         .iter()
         .map(|&category| (category, 0))
         .collect();
-    for email in &index.emails {
+    // Sent emails are by the owner, so their category says little.
+    let received: Vec<_> = index.emails.iter().filter(|e| !e.sent).collect();
+    for email in &received {
         *counts.entry(email.category).or_default() += 1;
     }
     let mut counts: Vec<_> = counts.into_iter().collect();
     // The largest first. The sort is stable, so ties keep the order of
     // the rules.
     counts.sort_by_key(|&(_, count)| Reverse(count));
-    let total = index.emails.len().max(1) as u64;
+    let total = received.len().max(1) as u64;
     let mut lines = vec![
         "## Emails per category".to_owned(),
         String::new(),
@@ -211,8 +231,8 @@ fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
         }),
     ));
     lines.extend(paragraph(
-        "The categories come from simple rules on the headers, so a few \
-         emails are in the wrong category.",
+        "Only received emails count. The categories come from simple rules \
+         on the headers, so a few emails are in the wrong category.",
     ));
     let data: Vec<_> = counts
         .iter()
@@ -238,7 +258,9 @@ struct Sender {
 /// - `top`: The number of senders in the table.
 fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
     let mut senders: BTreeMap<&str, Sender> = BTreeMap::new();
-    for email in &index.emails {
+    // Sent emails are all from the owner.
+    let received: Vec<_> = index.emails.iter().filter(|e| !e.sent).collect();
+    for email in &received {
         let Some(address) = &email.sender else {
             continue;
         };
@@ -248,13 +270,13 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
             *sender.names.entry(name.clone()).or_default() += 1;
         }
     }
-    let without = index.emails.len() as u64
-        - senders.values().map(|s| s.emails).sum::<u64>();
+    let without =
+        received.len() as u64 - senders.values().map(|s| s.emails).sum::<u64>();
     // The most emails first, ties by address, so that the order is stable.
     let mut ranked: Vec<_> = senders.into_iter().collect();
     ranked.sort_by_key(|(address, sender)| (Reverse(sender.emails), *address));
     let shown = &ranked[..top.min(ranked.len())];
-    let total = index.emails.len().max(1) as u64;
+    let total = received.len().max(1) as u64;
     let share: u64 =
         shown.iter().map(|(_, s)| s.emails).sum::<u64>() * 100 / total;
 
@@ -265,8 +287,8 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
         String::new(),
     ];
     lines.extend(paragraph(&format!(
-        "{}. The top {} sent {share}% of all emails. The name is the one \
-         that the sender used most often.",
+        "{} in received emails. The top {} sent {share}% of all received \
+         emails. The name is the one that the sender used most often.",
         count(ranked.len() as u64, "sender address", "sender addresses"),
         number(shown.len() as u64),
     )));
@@ -295,6 +317,65 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
         .collect();
     let title = format!("Top {} senders", data.len());
     (lines, (SENDERS_CHART, svg::bars(&title, &data)))
+}
+
+/// Returns the section with the top recipients of sent emails, and its
+/// chart.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+/// - `sources`: The email accounts of the config, whose own addresses do
+///   not count as recipients.
+/// - `top`: The number of recipients in the table.
+fn recipients(
+    index: &Index,
+    sources: &[Source],
+    top: usize,
+) -> (Vec<String>, (&'static str, String)) {
+    let own: HashSet<String> =
+        sources.iter().flat_map(Source::own_addresses).collect();
+    let mut recipients: BTreeMap<&str, u64> = BTreeMap::new();
+    let sent = index.emails.iter().filter(|e| e.sent);
+    for recipient in sent.flat_map(|e| &e.recipients) {
+        if !own.contains(recipient) {
+            *recipients.entry(recipient).or_default() += 1;
+        }
+    }
+    // The most emails first, ties by address, so that the order is stable.
+    let mut ranked: Vec<_> = recipients.into_iter().collect();
+    ranked.sort_by_key(|&(address, emails)| (Reverse(emails), address));
+    let shown = &ranked[..top.min(ranked.len())];
+
+    let mut lines = vec![
+        "## Top recipients".to_owned(),
+        String::new(),
+        format!("![Top recipients]({RECIPIENTS_CHART})"),
+        String::new(),
+    ];
+    lines.extend(paragraph(&format!(
+        "{} in sent emails, from To, Cc, and Bcc. An email to several \
+         recipients counts for each of them. Own addresses do not count.",
+        count(
+            ranked.len() as u64,
+            "recipient address",
+            "recipient addresses"
+        ),
+    )));
+    lines.extend(table(
+        &["#", "Recipient", "Emails"],
+        &[0, 2],
+        shown.iter().enumerate().map(|(rank, &(address, emails))| {
+            vec![(rank + 1).to_string(), escape(address), number(emails)]
+        }),
+    ));
+    let data: Vec<_> = shown
+        .iter()
+        .take(CHART_SENDERS)
+        .map(|&(address, emails)| (address.to_owned(), emails))
+        .collect();
+    let title = format!("Top {} recipients", data.len());
+    (lines, (RECIPIENTS_CHART, svg::bars(&title, &data)))
 }
 
 /// Returns the most used name, the first in alphabetical order on ties.
@@ -448,6 +529,8 @@ mod tests {
             sender: Some(sender.into()),
             sender_name: None,
             category,
+            sent: false,
+            recipients: Vec::new(),
         }
     }
 
@@ -566,6 +649,7 @@ mod tests {
     fn lists_the_accounts_with_their_emails() {
         let mut both = entry(Some(2024), "a@example.com", Category::Personal);
         both.sources.push("home".into());
+        both.sent = true;
         let index = Index {
             emails: vec![
                 entry(Some(2024), "a@example.com", Category::Personal),
@@ -578,9 +662,9 @@ mod tests {
         assert_eq!(
             rows(markdown, "Account"),
             [
-                ["work", "work@example.com", "imap.example.com:993", "2"],
-                ["home", "home@example.com", "imap.example.com:993", "1"],
-                ["old", "old@example.com", "imap.example.com:993", "0"],
+                ["work", "work@example.com", "imap.example.com:993", "1", "1"],
+                ["home", "home@example.com", "imap.example.com:993", "0", "1"],
+                ["old", "old@example.com", "imap.example.com:993", "0", "0"],
             ]
         );
         assert!(!markdown.contains("secret"), "{markdown}");
@@ -588,11 +672,13 @@ mod tests {
 
     #[test]
     fn counts_emails_per_year_with_gaps() {
+        let mut sent = entry(Some(2023), "me@example.com", Category::Personal);
+        sent.sent = true;
         let index = Index {
             emails: vec![
                 entry(Some(2021), "a@example.com", Category::Personal),
                 entry(Some(2023), "a@example.com", Category::Personal),
-                entry(Some(2023), "a@example.com", Category::Personal),
+                sent,
                 entry(None, "a@example.com", Category::Personal),
             ],
         };
@@ -611,13 +697,14 @@ mod tests {
         );
         assert_eq!(
             rows(markdown, "Year"),
-            [["2021", "1"], ["2022", "0"], ["2023", "2"]]
+            [["2021", "1", "0"], ["2022", "0", "0"], ["2023", "1", "1"]]
         );
         assert!(
             markdown.contains("Left out for lack of a usable date: 1 email."),
             "{markdown}"
         );
-        assert!(file(&report, YEARS_CHART).contains("<title>2023: 2</title>"));
+        let chart = file(&report, YEARS_CHART);
+        assert!(chart.contains("<title>2023, Sent: 1</title>"), "{chart}");
     }
 
     #[test]
@@ -628,6 +715,11 @@ mod tests {
                 entry(Some(2024), "n@example.com", Category::Newsletter),
                 entry(Some(2024), "m@example.com", Category::Newsletter),
                 entry(Some(2024), "s@example.com", Category::Social),
+                // A sent email, which does not count.
+                Entry {
+                    sent: true,
+                    ..entry(Some(2024), "me@example.com", Category::Personal)
+                },
             ],
         };
         let report = render(&index, &[], GENERATED, 50);
@@ -684,14 +776,20 @@ mod tests {
         let mut anonymous = entry(Some(2024), "", Category::Personal);
         anonymous.sender = None;
         emails.push(anonymous);
+        // A sent email, which does not count.
+        let mut sent = entry(Some(2024), "me@example.com", Category::Personal);
+        sent.sent = true;
+        emails.push(sent);
         let index = Index { emails };
 
         let report = render(&index, &[], GENERATED, 2);
 
         let markdown = file(&report, REPORT_FILE);
+        // Line breaks of paragraphs do not matter here.
         assert!(
-            markdown.contains(
-                "3 sender addresses. The top 2 sent 71% of all emails."
+            markdown.replace('\n', " ").contains(
+                "3 sender addresses in received emails. The top 2 sent 71% of \
+                 all received emails."
             ),
             "{markdown}"
         );
@@ -708,6 +806,37 @@ mod tests {
         );
         let chart = file(&report, SENDERS_CHART);
         assert!(chart.contains("<title>Top 2 senders</title>"), "{chart}");
+    }
+
+    #[test]
+    fn ranks_the_top_recipients_of_sent_emails() {
+        // Boring setup: two sent emails, one to a and b, one to a and the
+        // own address, and a received email.
+        let sent = |recipients: &[&str]| Entry {
+            sent: true,
+            recipients: recipients.iter().map(|&r| r.to_owned()).collect(),
+            ..entry(Some(2024), "work@example.com", Category::Personal)
+        };
+        let index = Index {
+            emails: vec![
+                sent(&["a@example.com", "b@example.com"]),
+                sent(&["a@example.com", "work@example.com"]),
+                entry(Some(2024), "c@example.com", Category::Personal),
+            ],
+        };
+
+        let report = render(&index, &[source("work")], GENERATED, 50);
+
+        let markdown = file(&report, REPORT_FILE);
+        let section = &markdown[markdown
+            .find("## Top recipients")
+            .expect("report should have the section")..];
+        assert_eq!(
+            rows(section, "#"),
+            [["1", "a@example.com", "2"], ["2", "b@example.com", "1"]]
+        );
+        let chart = file(&report, RECIPIENTS_CHART);
+        assert!(chart.contains("<title>a@example.com: 2</title>"), "{chart}");
     }
 
     #[test]

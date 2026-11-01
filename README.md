@@ -1,8 +1,9 @@
 # imap-statistics
 
 CLI to fetch the headers of all emails from IMAP accounts and generate a
-Markdown report with statistics: emails per account, per year, per category,
-and per sender. See the [demo report](examples/demo/report/report.md) of
+Markdown report with statistics: received and sent emails per account and per
+year, received emails per category and sender, and the recipients of sent
+emails. See the [demo report](examples/demo/report/report.md) of
 made-up emails.
 
 The tool only reads from the IMAP servers and never changes a mailbox,

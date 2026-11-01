@@ -36,8 +36,15 @@ struct Sender {
     /// Emails in the first and the last year, linear in between.
     first: u32,
     last: u32,
-    /// The source that receives the emails.
+    /// The source that has the emails.
     source: &'static str,
+    /// The folder of the emails in the source.
+    folder: &'static str,
+    /// The recipients, the owner for received emails.
+    to: &'static str,
+    /// Whether every 10th email also went to the other source, e.g. by
+    /// forwarding, and counts once.
+    copies: bool,
 }
 
 const SENDERS: &[Sender] = &[
@@ -49,6 +56,9 @@ const SENDERS: &[Sender] = &[
         first: 60,
         last: 25,
         source: "private",
+        folder: "INBOX",
+        to: "me@example.org",
+        copies: true,
     },
     Sender {
         name: "Ben Miller",
@@ -58,6 +68,9 @@ const SENDERS: &[Sender] = &[
         first: 40,
         last: 90,
         source: "work",
+        folder: "INBOX",
+        to: "me@example.com",
+        copies: true,
     },
     Sender {
         name: "Chen Li",
@@ -67,6 +80,9 @@ const SENDERS: &[Sender] = &[
         first: 20,
         last: 45,
         source: "work",
+        folder: "INBOX",
+        to: "me@example.com",
+        copies: true,
     },
     Sender {
         name: "Example Shop",
@@ -76,6 +92,9 @@ const SENDERS: &[Sender] = &[
         first: 10,
         last: 120,
         source: "private",
+        folder: "INBOX",
+        to: "me@example.org",
+        copies: false,
     },
     Sender {
         name: "Example Forum",
@@ -85,6 +104,9 @@ const SENDERS: &[Sender] = &[
         first: 80,
         last: 15,
         source: "private",
+        folder: "INBOX",
+        to: "me@example.org",
+        copies: false,
     },
     Sender {
         name: "Example Shop",
@@ -94,6 +116,9 @@ const SENDERS: &[Sender] = &[
         first: 5,
         last: 30,
         source: "private",
+        folder: "INBOX",
+        to: "me@example.org",
+        copies: true,
     },
     Sender {
         name: "Example Telco",
@@ -103,6 +128,9 @@ const SENDERS: &[Sender] = &[
         first: 12,
         last: 12,
         source: "private",
+        folder: "INBOX",
+        to: "me@example.org",
+        copies: true,
     },
     Sender {
         name: "Example CI",
@@ -112,6 +140,9 @@ const SENDERS: &[Sender] = &[
         first: 0,
         last: 150,
         source: "work",
+        folder: "INBOX",
+        to: "me@example.com",
+        copies: false,
     },
     Sender {
         name: "Facebook",
@@ -121,6 +152,9 @@ const SENDERS: &[Sender] = &[
         first: 50,
         last: 5,
         source: "private",
+        folder: "INBOX",
+        to: "me@example.org",
+        copies: true,
     },
     Sender {
         name: "LinkedIn",
@@ -130,6 +164,50 @@ const SENDERS: &[Sender] = &[
         first: 15,
         last: 35,
         source: "work",
+        folder: "INBOX",
+        to: "me@example.com",
+        copies: true,
+    },
+    // Sent by the owner from the username of "work", in the Sent folder.
+    Sender {
+        name: "Me",
+        address: "me@example.com",
+        extra: "",
+        subject: "Re: Project update",
+        first: 40,
+        last: 70,
+        source: "work",
+        folder: "Sent",
+        to: "ben.miller@example.com, chen.li@example.net",
+        copies: false,
+    },
+    // Sent from an old address of the owner, which the config lists, in
+    // a folder with all emails, as on Gmail.
+    Sender {
+        name: "Me",
+        address: "me@old.example.net",
+        extra: "",
+        subject: "Re: Weekend plans",
+        first: 30,
+        last: 5,
+        source: "private",
+        folder: "All Mail",
+        to: "anna.schmidt@example.org, me@example.org",
+        copies: false,
+    },
+    // Sent from an address that the config misses, only the Sent folder
+    // tells that it is sent.
+    Sender {
+        name: "Me",
+        address: "me@laptop.example.com",
+        extra: "",
+        subject: "Notes",
+        first: 0,
+        last: 25,
+        source: "work",
+        folder: "Sent",
+        to: "team@example.com",
+        copies: false,
     },
 ];
 
@@ -146,7 +224,9 @@ fn main() -> anyhow::Result<()> {
     if fs::read_dir(&dir).is_ok_and(|mut entries| entries.next().is_some()) {
         bail!("{} is not empty, remove it first", dir.display());
     }
-    let mut emails: BTreeMap<&str, Vec<FetchedHeader>> = BTreeMap::new();
+    // The emails of each folder of each source.
+    let mut emails: BTreeMap<(&str, &str), Vec<FetchedHeader>> =
+        BTreeMap::new();
     for (index, sender) in SENDERS.iter().enumerate() {
         for year in FIRST_YEAR..=LAST_YEAR {
             let progress = year - FIRST_YEAR;
@@ -164,51 +244,58 @@ fn main() -> anyhow::Result<()> {
                     internaldate: Some(internaldate(year, number)),
                     header: header.clone().into_bytes(),
                 };
-                let uid = next_uid(&emails, sender.source);
-                emails.entry(sender.source).or_default().push(email(uid));
-                // Every 10th personal email also went to the other
-                // source, e.g. by forwarding, and counts once.
-                if sender.extra.is_empty() && number % 10 == 0 {
+                let folder = (sender.source, sender.folder);
+                let uid = next_uid(&emails, folder);
+                emails.entry(folder).or_default().push(email(uid));
+                if sender.copies && number % 10 == 0 {
                     let other = if sender.source == "work" {
                         "private"
                     } else {
                         "work"
                     };
-                    let uid = next_uid(&emails, other);
-                    emails.entry(other).or_default().push(email(uid));
+                    let uid = next_uid(&emails, (other, "INBOX"));
+                    emails
+                        .entry((other, "INBOX"))
+                        .or_default()
+                        .push(email(uid));
                 }
             }
         }
     }
-    for (source, headers) in emails {
+    let mut folders: BTreeMap<&str, BTreeMap<String, FolderState>> =
+        BTreeMap::new();
+    for ((source, folder), headers) in emails {
         let mut store = Store::open(&dir.join(source))?;
         let uids = headers.iter().map(|h| h.uid).collect();
         for header in headers {
-            store.append("INBOX", UIDVALIDITY, header)?;
+            store.append(folder, UIDVALIDITY, header)?;
         }
-        let folders = BTreeMap::from([(
-            "INBOX".to_owned(),
-            FolderState {
-                uidvalidity: UIDVALIDITY,
-                uids,
-            },
-        )]);
+        let state = FolderState {
+            uidvalidity: UIDVALIDITY,
+            uids,
+            sent: folder == "Sent",
+        };
+        let source_folders = folders.entry(source).or_default();
+        source_folders.insert(folder.to_owned(), state);
         store
-            .save_folders(&folders)
+            .save_folders(source_folders)
             .with_context(|| format!("failed to write source {source}"))?;
     }
     Ok(())
 }
 
-/// Returns the next free UID of a source.
+/// Returns the next free UID of a folder.
 ///
 /// # Arguments
 ///
-/// - `emails`: The emails per source so far.
-/// - `source`: The name of the source.
-fn next_uid(emails: &BTreeMap<&str, Vec<FetchedHeader>>, source: &str) -> u32 {
+/// - `emails`: The emails per folder of each source so far.
+/// - `folder`: The source and the name of the folder.
+fn next_uid(
+    emails: &BTreeMap<(&str, &str), Vec<FetchedHeader>>,
+    folder: (&str, &str),
+) -> u32 {
     emails
-        .get(source)
+        .get(&folder)
         .map_or(1, |headers| headers.len() as u32 + 1)
 }
 
@@ -236,10 +323,10 @@ fn header(index: usize, sender: &Sender, year: u32, number: u32) -> String {
     format!(
         "Message-ID: <{index}.{year}.{number}@demo.example>\r\n\
          From: {} <{}>\r\n\
-         To: me@example.com\r\n\
+         To: {}\r\n\
          Subject: {}\r\n\
          {date}{}\r\n",
-        sender.name, sender.address, sender.subject, sender.extra
+        sender.name, sender.address, sender.to, sender.subject, sender.extra
     )
 }
 
