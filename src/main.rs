@@ -2,6 +2,7 @@
 
 //! CLI to generate statistics about the emails in IMAP accounts.
 
+use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 
@@ -9,10 +10,10 @@ use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
 
-use imap_statistics::config::Config;
+use imap_statistics::config::{Config, Source};
 use imap_statistics::fetch;
 use imap_statistics::hint::hint;
-use imap_statistics::index::{INDEX_FILE, Index};
+use imap_statistics::index::{INDEX_FILE, Index, SourceEmails};
 use imap_statistics::pdf::{self, PDF_FILE};
 use imap_statistics::report::{self, REPORT_FILE};
 use imap_statistics::store;
@@ -120,20 +121,31 @@ fn fetch_all(config: &Config) -> anyhow::Result<()> {
 fn index(config: &Config) -> anyhow::Result<()> {
     let mut sources = Vec::new();
     for source in &config.sources {
-        let headers = store::load(&config.data_dir.join(&source.name))?;
+        let dir = config.data_dir.join(&source.name);
+        let headers = store::load(&dir)?;
         if headers.is_empty() {
             eprintln!("{}: no emails, run `fetch` first", source.name);
         }
-        sources.push((source.name.clone(), headers));
+        sources.push(SourceEmails {
+            name: source.name.clone(),
+            headers,
+            sent_folders: store::sent_folders(&dir)?,
+        });
     }
-    let index = Index::build(&sources, now()?.as_second());
+    let own_addresses: HashSet<String> = config
+        .sources
+        .iter()
+        .flat_map(Source::own_addresses)
+        .collect();
+    let index = Index::build(&sources, &own_addresses, now()?.as_second());
     let path = config.data_dir.join(INDEX_FILE);
     index.write(&path)?;
-    let copies: usize = sources.iter().map(|(_, headers)| headers.len()).sum();
+    let copies: usize = sources.iter().map(|s| s.headers.len()).sum();
+    let sent = index.emails.iter().filter(|e| e.sent).count();
     let undated = index.emails.iter().filter(|e| e.year.is_none()).count();
     eprintln!(
-        "Indexed {} emails from {copies} copies, {undated} without date, \
-         into {}",
+        "Indexed {} emails ({sent} sent) from {copies} copies, {undated} \
+         without date, into {}",
         index.emails.len(),
         path.display()
     );

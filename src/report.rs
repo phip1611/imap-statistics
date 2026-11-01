@@ -448,6 +448,8 @@ mod tests {
             sender: Some(sender.into()),
             sender_name: None,
             category,
+            sent: false,
+            recipients: Vec::new(),
         }
     }
 

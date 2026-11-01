@@ -4,7 +4,7 @@
 //! needs. Copies of an email count once, e.g. if it is in two folders, or
 //! in two sources because one account forwards to the other.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -43,6 +43,25 @@ pub struct Entry {
     pub sender: Option<String>,
     pub sender_name: Option<String>,
     pub category: Category,
+    /// Whether the owner sent the email: it came from one of the own
+    /// addresses, or a copy is in a Sent folder.
+    #[serde(default)]
+    pub sent: bool,
+    /// The recipients of a sent email, in lowercase. Empty for received
+    /// emails, whose recipient is the owner.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recipients: Vec<String>,
+}
+
+/// The fetched emails of a source, as the index needs them.
+#[derive(Debug, Clone, Default)]
+pub struct SourceEmails {
+    /// The name of the source.
+    pub name: String,
+    /// The stored headers of the emails on the server.
+    pub headers: Vec<StoredHeader>,
+    /// The folders that hold sent emails.
+    pub sent_folders: HashSet<String>,
 }
 
 impl Index {
@@ -50,25 +69,46 @@ impl Index {
     ///
     /// # Arguments
     ///
-    /// - `sources`: The name and the stored headers of each source.
+    /// - `sources`: The fetched emails of each source.
+    /// - `own_addresses`: The addresses of the owner in all sources, in
+    ///   lowercase.
     /// - `now`: The current time as Unix timestamp, the latest plausible date.
     #[must_use]
-    pub fn build(sources: &[(String, Vec<StoredHeader>)], now: i64) -> Self {
+    pub fn build(
+        sources: &[SourceEmails],
+        own_addresses: &HashSet<String>,
+        now: i64,
+    ) -> Self {
         let mut emails: Vec<Entry> = Vec::new();
         let mut positions = HashMap::new();
-        for (source, headers) in sources {
-            for stored in headers {
+        for source in sources {
+            for stored in &source.headers {
                 let email = Email::parse(stored.header.as_bytes());
-                let key = copy_key(source, stored, &email);
+                let sent = source.sent_folders.contains(&stored.folder)
+                    || email
+                        .sender
+                        .as_ref()
+                        .is_some_and(|s| own_addresses.contains(&s.address));
+                let key = copy_key(&source.name, stored, &email);
                 if let Some(&position) = positions.get(&key) {
                     let entry: &mut Entry = &mut emails[position];
-                    if !entry.sources.contains(source) {
-                        entry.sources.push(source.clone());
+                    if !entry.sources.contains(&source.name) {
+                        entry.sources.push(source.name.clone());
+                    }
+                    // A copy in a Sent folder makes all copies sent.
+                    if sent && !entry.sent {
+                        entry.sent = true;
+                        entry.recipients.clone_from(&email.recipients);
                     }
                     continue;
                 }
                 positions.insert(key, emails.len());
-                emails.push(entry(source, stored, &email, now));
+                let mut entry = entry(&source.name, stored, &email, now);
+                if sent {
+                    entry.sent = true;
+                    entry.recipients = email.recipients;
+                }
+                emails.push(entry);
             }
         }
         Self { emails }
@@ -130,6 +170,8 @@ fn entry(
         sender: email.sender.as_ref().map(|s| s.address.clone()),
         sender_name: email.sender.as_ref().and_then(|s| s.name.clone()),
         category: Category::of(email),
+        sent: false,
+        recipients: Vec::new(),
     }
 }
 
@@ -198,18 +240,29 @@ mod tests {
         }
     }
 
-    /// Returns sources as `Index::build` takes them.
+    /// Returns sources as `Index::build` takes them, without Sent folders.
     ///
     /// # Arguments
     ///
     /// - `sources`: The name and the stored headers of each source.
-    fn sources(
-        sources: &[(&str, Vec<StoredHeader>)],
-    ) -> Vec<(String, Vec<StoredHeader>)> {
+    fn sources(sources: &[(&str, Vec<StoredHeader>)]) -> Vec<SourceEmails> {
         sources
             .iter()
-            .map(|(name, headers)| ((*name).to_owned(), headers.clone()))
+            .map(|(name, headers)| SourceEmails {
+                name: (*name).to_owned(),
+                headers: headers.clone(),
+                sent_folders: HashSet::new(),
+            })
             .collect()
+    }
+
+    /// Builds an index without own addresses.
+    ///
+    /// # Arguments
+    ///
+    /// - `entries`: The name and the stored headers of each source.
+    fn build(entries: &[(&str, Vec<StoredHeader>)]) -> Index {
+        Index::build(&sources(entries), &HashSet::new(), NOW)
     }
 
     #[test]
@@ -234,8 +287,7 @@ mod tests {
         let header = "From: Jane <Jane@Example.com>\r\n\
                       Date: Mon, 1 Jan 2024 10:00:00 +0000\r\n\
                       List-Id: <list.example.com>\r\n\r\n";
-        let index =
-            Index::build(&sources(&[("work", vec![stored(1, header)])]), NOW);
+        let index = build(&[("work", vec![stored(1, header)])]);
         assert_eq!(
             index.emails,
             [Entry {
@@ -244,7 +296,55 @@ mod tests {
                 sender: Some("jane@example.com".into()),
                 sender_name: Some("Jane".into()),
                 category: Category::Newsletter,
+                sent: false,
+                recipients: Vec::new(),
             }]
+        );
+    }
+
+    #[test]
+    fn tells_sent_from_received_emails() {
+        // Boring setup: in "work", an email from an own address, one in a
+        // Sent folder from an address that the config misses, and a
+        // received one. In "home", a copy of the received one in Sent.
+        let header = |id: u32, from: &str, to: &str| {
+            format!("Message-ID: <{id}>\r\nFrom: {from}\r\nTo: {to}\r\n\r\n")
+        };
+        let mut in_sent =
+            stored(2, &header(2, "me@old.example", "b@x.example"));
+        in_sent.folder = "Sent".into();
+        let received = header(3, "c@x.example", "me@example.com");
+        let mut received_copy = stored(9, &received);
+        received_copy.folder = "Sent".into();
+        let mut sources = sources(&[
+            (
+                "work",
+                vec![
+                    stored(1, &header(1, "Me@Example.com", "a@x.example")),
+                    in_sent,
+                    stored(3, &received),
+                ],
+            ),
+            ("home", vec![received_copy]),
+        ]);
+        sources[0].sent_folders.insert("Sent".into());
+        let own = HashSet::from(["me@example.com".to_owned()]);
+
+        let index = Index::build(&sources, &own, NOW);
+
+        let sent: Vec<_> = index
+            .emails
+            .iter()
+            .map(|e| (e.sent, e.recipients.clone()))
+            .collect();
+        assert_eq!(
+            sent,
+            [
+                (true, vec!["a@x.example".to_owned()]),
+                (true, vec!["b@x.example".to_owned()]),
+                // The Sent folder of "home" is unknown, so it is received.
+                (false, Vec::new()),
+            ]
         );
     }
 
@@ -257,13 +357,10 @@ mod tests {
         in_sent.folder = "Sent".into();
         let other =
             "Message-ID: <2@example.com>\r\nFrom: a@example.com\r\n\r\n";
-        let index = Index::build(
-            &sources(&[
-                ("work", vec![stored(1, copy), in_sent]),
-                ("home", vec![stored(7, other), stored(8, copy)]),
-            ]),
-            NOW,
-        );
+        let index = build(&[
+            ("work", vec![stored(1, copy), in_sent]),
+            ("home", vec![stored(7, other), stored(8, copy)]),
+        ]);
 
         let copies: Vec<_> =
             index.emails.iter().map(|e| e.sources.clone()).collect();
@@ -273,20 +370,17 @@ mod tests {
     #[test]
     fn counts_copies_without_message_id_by_their_fields() {
         let header = "From: a@example.com\r\nSubject: Hi\r\n\r\n";
-        let index = Index::build(
-            &sources(&[(
-                "work",
-                vec![
-                    stored(1, header),
-                    stored(2, header),
-                    stored(3, "From: a@example.com\r\nSubject: Ho\r\n\r\n"),
-                    // Without any field, these are no copies.
-                    stored(4, "X: 1\r\n\r\n"),
-                    stored(5, "X: 1\r\n\r\n"),
-                ],
-            )]),
-            NOW,
-        );
+        let index = build(&[(
+            "work",
+            vec![
+                stored(1, header),
+                stored(2, header),
+                stored(3, "From: a@example.com\r\nSubject: Ho\r\n\r\n"),
+                // Without any field, these are no copies.
+                stored(4, "X: 1\r\n\r\n"),
+                stored(5, "X: 1\r\n\r\n"),
+            ],
+        )]);
         assert_eq!(index.emails.len(), 4);
     }
 
@@ -309,7 +403,7 @@ mod tests {
         undated.internaldate = Some("01-Jan-1970 00:00:01 +0000".into());
         headers.push(undated);
 
-        let index = Index::build(&sources(&[("work", headers)]), NOW);
+        let index = build(&[("work", headers)]);
         let years: Vec<_> = index.emails.iter().map(|e| e.year).collect();
         assert_eq!(
             years,
@@ -322,8 +416,7 @@ mod tests {
         let dir = TempDir::new("index-roundtrip");
         let path = dir.path().join(INDEX_FILE);
         let header = "From: a@example.com\r\n\r\n";
-        let index =
-            Index::build(&sources(&[("work", vec![stored(1, header)])]), NOW);
+        let index = build(&[("work", vec![stored(1, header)])]);
         index.write(&path).expect("index should be written");
         assert_eq!(Index::read(&path).expect("index should be read"), index);
     }
