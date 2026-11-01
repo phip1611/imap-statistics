@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+  viewBox="0 0 720 276" width="720" height="276"
+  aria-label="Top 10 senders">
+<title>Top 10 senders</title>
+<style>
+.bar { fill: #2a78d6 }
+.grid { stroke: #e1e0d9; stroke-width: 1 }
+.axis { stroke: #c3c2b7; stroke-width: 1 }
+text { fill: #52514e; font: 12px system-ui, -apple-system, "Segoe UI", sans-serif }
+@media (prefers-color-scheme: dark) {
+  .bar { fill: #3987e5 }
+  .grid { stroke: #2c2c2a }
+  .axis { stroke: #383835 }
+  text { fill: #c3c2b7 }
+}
+</style>
+<line class="axis" x1="233.5" x2="233.5" y1="8" y2="268"/><text x="225.5" y="25.0" text-anchor="end">noreply@ci.example.com</text><path class="bar" d="M233.50,13.00H652.00Q656.00,13.00 656.00,17.00V25.00Q656.00,29.00 652.00,29.00H233.50Z"><title>noreply@ci.example.com: 1,050</title></path><text x="662.0" y="25.0">1,050</text><text x="225.5" y="51.0" text-anchor="end">ben.miller@example.com</text><path class="bar" d="M233.50,39.00H589.63Q593.63,39.00 593.63,43.00V51.00Q593.63,55.00 589.63,55.00H233.50Z"><title>ben.miller@example.com: 895</title></path><text x="599.6" y="51.0">895</text><text x="225.5" y="77.0" text-anchor="end">news@shop.example.com</text><path class="bar" d="M233.50,65.00H588.42Q592.42,65.00 592.42,69.00V77.00Q592.42,81.00 588.42,81.00H233.50Z"><title>news@shop.example.com: 892</title></path><text x="598.4" y="77.0">892</text><text x="225.5" y="103.0" text-anchor="end">digest@forum.example.org</text><path class="bar" d="M233.50,91.00H489.84Q493.84,91.00 493.84,95.00V103.00Q493.84,107.00 489.84,107.00H233.50Z"><title>digest@forum.example.org: 647</title></path><text x="499.8" y="103.0">647</text><text x="225.5" y="129.0" text-anchor="end">anna.schmidt@example.org</text><path class="bar" d="M233.50,117.00H460.87Q464.87,117.00 464.87,121.00V129.00Q464.87,133.00 460.87,133.00H233.50Z"><title>anna.schmidt@example.org: 575</title></path><text x="470.9" y="129.0">575</text><text x="225.5" y="155.0" text-anchor="end">chen.li@example.net</text><path class="bar" d="M233.50,143.00H408.56Q412.56,143.00 412.56,147.00V155.00Q412.56,159.00 408.56,159.00H233.50Z"><title>chen.li@example.net: 445</title></path><text x="418.6" y="155.0">445</text><text x="225.5" y="181.0" text-anchor="end">notification@facebookmail.com</text><path class="bar" d="M233.50,169.00H381.20Q385.20,169.00 385.20,173.00V181.00Q385.20,185.00 381.20,185.00H233.50Z"><title>notification@facebookmail.com: 377</title></path><text x="391.2" y="181.0">377</text><text x="225.5" y="207.0" text-anchor="end">messages-noreply@linkedin.com</text><path class="bar" d="M233.50,195.00H362.69Q366.69,195.00 366.69,199.00V207.00Q366.69,211.00 362.69,211.00H233.50Z"><title>messages-noreply@linkedin.com: 331</title></path><text x="372.7" y="207.0">331</text><text x="225.5" y="233.0" text-anchor="end">orders@shop.example.com</text><path class="bar" d="M233.50,221.00H321.24Q325.24,221.00 325.24,225.00V233.00Q325.24,237.00 321.24,237.00H233.50Z"><title>orders@shop.example.com: 228</title></path><text x="331.2" y="233.0">228</text><text x="225.5" y="259.0" text-anchor="end">billing@telco.example.net</text><path class="bar" d="M233.50,247.00H295.09Q299.09,247.00 299.09,251.00V259.00Q299.09,263.00 295.09,263.00H233.50Z"><title>billing@telco.example.net: 163</title></path><text x="305.1" y="259.0">163</text>
+</svg>

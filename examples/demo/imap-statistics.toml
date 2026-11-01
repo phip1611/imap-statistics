@@ -1,0 +1,15 @@
+# Config of the demo report, whose data comes from the demo_data example
+# instead of IMAP servers. See README.md in this directory.
+data_dir = "data"
+
+[[source]]
+name = "work"
+host = "imap.example.com"
+username = "me@example.com"
+password = "unused"
+
+[[source]]
+name = "private"
+host = "imap.example.org"
+username = "me@example.org"
+password = "unused"

@@ -30,6 +30,9 @@ cargo +1.88 build --locked    # MSRV, also in Cargo.toml and CI
 typos
 ```
 
+After a change of the report, also run `examples/demo/generate.sh` and
+commit the changed demo report, which CI compares.
+
 ## Conventions
 
 - Every `.rs` file starts with `// SPDX-License-Identifier: MIT OR Apache-2.0`.

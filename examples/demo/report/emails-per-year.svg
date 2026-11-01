@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+  viewBox="0 0 720 280" width="720" height="280"
+  aria-label="Emails per year">
+<title>Emails per year</title>
+<style>
+.bar { fill: #2a78d6 }
+.grid { stroke: #e1e0d9; stroke-width: 1 }
+.axis { stroke: #c3c2b7; stroke-width: 1 }
+text { fill: #52514e; font: 12px system-ui, -apple-system, "Segoe UI", sans-serif }
+@media (prefers-color-scheme: dark) {
+  .bar { fill: #3987e5 }
+  .grid { stroke: #2c2c2a }
+  .axis { stroke: #383835 }
+  text { fill: #c3c2b7 }
+}
+</style>
+<line class="axis" x1="48" x2="704" y1="252.0" y2="252.0"/><text x="40" y="256.0" text-anchor="end">0</text><line class="grid" x1="48" x2="704" y1="173.3" y2="173.3"/><text x="40" y="177.3" text-anchor="end">200</text><line class="grid" x1="48" x2="704" y1="94.7" y2="94.7"/><text x="40" y="98.7" text-anchor="end">400</text><line class="grid" x1="48" x2="704" y1="16.0" y2="16.0"/><text x="40" y="20.0" text-anchor="end">600</text><path class="bar" d="M59.43,252.00V146.26Q59.43,142.26 63.43,142.26H79.43Q83.43,142.26 83.43,146.26V252.00Z"><title>2012: 279</title></path><text x="71.4" y="270" text-anchor="middle">2012</text><path class="bar" d="M106.29,252.00V134.85Q106.29,130.85 110.29,130.85H126.29Q130.29,130.85 130.29,134.85V252.00Z"><title>2013: 308</title></path><text x="118.3" y="270" text-anchor="middle">2013</text><path class="bar" d="M153.14,252.00V132.89Q153.14,128.89 157.14,128.89H173.14Q177.14,128.89 177.14,132.89V252.00Z"><title>2014: 313</title></path><text x="165.1" y="270" text-anchor="middle">2014</text><path class="bar" d="M200.00,252.00V124.63Q200.00,120.63 204.00,120.63H220.00Q224.00,120.63 224.00,124.63V252.00Z"><title>2015: 334</title></path><text x="212.0" y="270" text-anchor="middle">2015</text><path class="bar" d="M246.86,252.00V117.15Q246.86,113.15 250.86,113.15H266.86Q270.86,113.15 270.86,117.15V252.00Z"><title>2016: 353</title></path><text x="258.9" y="270" text-anchor="middle">2016</text><path class="bar" d="M293.71,252.00V107.32Q293.71,103.32 297.71,103.32H313.71Q317.71,103.32 317.71,107.32V252.00Z"><title>2017: 378</title></path><text x="305.7" y="270" text-anchor="middle">2017</text><path class="bar" d="M340.57,252.00V101.81Q340.57,97.81 344.57,97.81H360.57Q364.57,97.81 364.57,101.81V252.00Z"><title>2018: 392</title></path><text x="352.6" y="270" text-anchor="middle">2018</text><path class="bar" d="M387.43,252.00V93.16Q387.43,89.16 391.43,89.16H407.43Q411.43,89.16 411.43,93.16V252.00Z"><title>2019: 414</title></path><text x="399.4" y="270" text-anchor="middle">2019</text><path class="bar" d="M434.29,252.00V89.23Q434.29,85.23 438.29,85.23H454.29Q458.29,85.23 458.29,89.23V252.00Z"><title>2020: 424</title></path><text x="446.3" y="270" text-anchor="middle">2020</text><path class="bar" d="M481.14,252.00V83.72Q481.14,79.72 485.14,79.72H501.14Q505.14,79.72 505.14,83.72V252.00Z"><title>2021: 438</title></path><text x="493.1" y="270" text-anchor="middle">2021</text><path class="bar" d="M528.00,252.00V74.28Q528.00,70.28 532.00,70.28H548.00Q552.00,70.28 552.00,74.28V252.00Z"><title>2022: 462</title></path><text x="540.0" y="270" text-anchor="middle">2022</text><path class="bar" d="M574.86,252.00V67.20Q574.86,63.20 578.86,63.20H594.86Q598.86,63.20 598.86,67.20V252.00Z"><title>2023: 480</title></path><text x="586.9" y="270" text-anchor="middle">2023</text><path class="bar" d="M621.71,252.00V53.04Q621.71,49.04 625.71,49.04H641.71Q645.71,49.04 645.71,53.04V252.00Z"><title>2024: 516</title></path><text x="633.7" y="270" text-anchor="middle">2024</text><path class="bar" d="M668.57,252.00V57.37Q668.57,53.37 672.57,53.37H688.57Q692.57,53.37 692.57,57.37V252.00Z"><title>2025: 505</title></path><text x="680.6" y="270" text-anchor="middle">2025</text>
+</svg>
