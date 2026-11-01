@@ -17,6 +17,9 @@ use crate::svg::{self, number};
 pub const REPORT_FILE: &str = "report.md";
 const YEARS_CHART: &str = "emails-per-year.svg";
 const CATEGORIES_CHART: &str = "emails-per-category.svg";
+const SENDERS_CHART: &str = "top-senders.svg";
+/// Senders in the chart. More would make it too high to read.
+const CHART_SENDERS: usize = 20;
 
 /// Writes the report and its charts into a directory.
 ///
@@ -24,10 +27,11 @@ const CATEGORIES_CHART: &str = "emails-per-category.svg";
 ///
 /// - `index`: The index of all emails.
 /// - `dir`: The directory, which is created if needed.
-pub fn write(index: &Index, dir: &Path) -> anyhow::Result<()> {
+/// - `top`: The number of senders in the list of top senders.
+pub fn write(index: &Index, dir: &Path, top: usize) -> anyhow::Result<()> {
     fs::create_dir_all(dir)
         .with_context(|| format!("failed to create {}", dir.display()))?;
-    let report = render(index);
+    let report = render(index, top);
     for (file, content) in report.files {
         let path = dir.join(file);
         fs::write(&path, content)
@@ -47,7 +51,8 @@ struct Report {
 /// # Arguments
 ///
 /// - `index`: The index of all emails.
-fn render(index: &Index) -> Report {
+/// - `top`: The number of senders in the list of top senders.
+fn render(index: &Index, top: usize) -> Report {
     let total = index.emails.len();
     let mut markdown = vec![
         "# Email statistics".to_owned(),
@@ -61,7 +66,9 @@ fn render(index: &Index) -> Report {
         String::new(),
     ];
     let mut files = Vec::new();
-    for (section, chart) in [years(index), categories(index)] {
+    for (section, chart) in
+        [years(index), categories(index), senders(index, top)]
+    {
         markdown.extend(section);
         files.push(chart);
     }
@@ -162,6 +169,96 @@ fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
     (lines, (CATEGORIES_CHART, chart))
 }
 
+/// What the report shows of a sender.
+#[derive(Debug, Default)]
+struct Sender {
+    emails: u64,
+    /// How often each display name was used.
+    names: BTreeMap<String, u64>,
+}
+
+/// Returns the section with the top senders, and its chart.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+/// - `top`: The number of senders in the table.
+fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
+    let mut senders: BTreeMap<&str, Sender> = BTreeMap::new();
+    for email in &index.emails {
+        let Some(address) = &email.sender else {
+            continue;
+        };
+        let sender = senders.entry(address).or_default();
+        sender.emails += 1;
+        if let Some(name) = &email.sender_name {
+            *sender.names.entry(name.clone()).or_default() += 1;
+        }
+    }
+    let without = index.emails.len() as u64
+        - senders.values().map(|s| s.emails).sum::<u64>();
+    // The most emails first, ties by address, so that the order is stable.
+    let mut ranked: Vec<_> = senders.into_iter().collect();
+    ranked.sort_by_key(|(address, sender)| (Reverse(sender.emails), *address));
+    let shown = &ranked[..top.min(ranked.len())];
+    let total = index.emails.len().max(1) as u64;
+    let share: u64 =
+        shown.iter().map(|(_, s)| s.emails).sum::<u64>() * 100 / total;
+
+    let mut lines = vec![
+        "## Top senders".to_owned(),
+        String::new(),
+        format!("![Top senders]({SENDERS_CHART})"),
+        String::new(),
+        format!(
+            "{}. The top {} sent {share}% of all emails. The name is the one \
+             that the sender used most often.",
+            count(ranked.len() as u64, "sender address", "sender addresses"),
+            number(shown.len() as u64),
+        ),
+        String::new(),
+    ];
+    lines.extend(table(
+        &["#", "Sender", "Name", "Emails"],
+        &[0, 3],
+        shown.iter().enumerate().map(|(rank, (address, sender))| {
+            vec![
+                (rank + 1).to_string(),
+                escape(address),
+                escape(&most_used(&sender.names)),
+                number(sender.emails),
+            ]
+        }),
+    ));
+    if without > 0 {
+        lines.push(format!(
+            "Left out for lack of a usable sender: {}.",
+            count(without, "email", "emails")
+        ));
+        lines.push(String::new());
+    }
+    let data: Vec<_> = shown
+        .iter()
+        .take(CHART_SENDERS)
+        .map(|(address, sender)| ((*address).to_owned(), sender.emails))
+        .collect();
+    let title = format!("Top {} senders", data.len());
+    (lines, (SENDERS_CHART, svg::bars(&title, &data)))
+}
+
+/// Returns the most used name, the first in alphabetical order on ties.
+///
+/// # Arguments
+///
+/// - `names`: How often each name was used.
+fn most_used(names: &BTreeMap<String, u64>) -> String {
+    names
+        .iter()
+        .max_by_key(|&(name, count)| (count, Reverse(name)))
+        .map(|(name, _)| name.clone())
+        .unwrap_or_default()
+}
+
 /// Formats a count with its noun, e.g. `1 email` or `2 emails`.
 ///
 /// # Arguments
@@ -229,6 +326,22 @@ fn table(
     lines.extend(rows.iter().map(|row| line(row)));
     lines.push(String::new());
     lines
+}
+
+/// Escapes text for a cell of a Markdown table.
+///
+/// # Arguments
+///
+/// - `text`: The text.
+fn escape(text: &str) -> String {
+    let mut escaped = String::new();
+    for c in text.chars() {
+        if matches!(c, '\\' | '|' | '*' | '_' | '`' | '<' | '>' | '[' | ']') {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
 }
 
 #[cfg(test)]
@@ -325,7 +438,7 @@ mod tests {
                 entry(None, "a@example.com", Category::Personal),
             ],
         };
-        let report = render(&index);
+        let report = render(&index, 50);
         let markdown = file(&report, REPORT_FILE);
         assert!(
             markdown.contains("4 emails, each counted once"),
@@ -352,7 +465,7 @@ mod tests {
                 entry(Some(2024), "s@example.com", Category::Social),
             ],
         };
-        let report = render(&index);
+        let report = render(&index, 50);
         let markdown = file(&report, REPORT_FILE);
         assert_eq!(
             rows(markdown, "Category"),
@@ -389,6 +502,55 @@ mod tests {
     }
 
     #[test]
+    fn ranks_the_top_senders() {
+        // Boring setup: b has 3 emails, under two names, a and c have 2
+        // and 1, and one email has no sender.
+        let mut emails = vec![
+            entry(Some(2024), "c@example.com", Category::Personal),
+            entry(Some(2024), "a@example.com", Category::Personal),
+            entry(Some(2024), "a@example.com", Category::Personal),
+        ];
+        for name in ["Bob", "Bobby", "Bob"] {
+            let mut email =
+                entry(Some(2024), "b@example.com", Category::Personal);
+            email.sender_name = Some(name.into());
+            emails.push(email);
+        }
+        let mut anonymous = entry(Some(2024), "", Category::Personal);
+        anonymous.sender = None;
+        emails.push(anonymous);
+        let index = Index { emails };
+
+        let report = render(&index, 2);
+
+        let markdown = file(&report, REPORT_FILE);
+        assert!(
+            markdown.contains(
+                "3 sender addresses. The top 2 sent 71% of all emails."
+            ),
+            "{markdown}"
+        );
+        assert_eq!(
+            rows(markdown, "#"),
+            [
+                ["1", "b@example.com", "Bob", "3"],
+                ["2", "a@example.com", "", "2"]
+            ]
+        );
+        assert!(
+            markdown.contains("Left out for lack of a usable sender: 1 email."),
+            "{markdown}"
+        );
+        let chart = file(&report, SENDERS_CHART);
+        assert!(chart.contains("<title>Top 2 senders</title>"), "{chart}");
+    }
+
+    #[test]
+    fn escapes_table_cells() {
+        assert_eq!(escape("a|b *c* <d>"), r"a\|b \*c\* \<d\>");
+    }
+
+    #[test]
     fn writes_all_files() {
         let dir = TempDir::new("report-write");
         let index = Index {
@@ -398,9 +560,9 @@ mod tests {
                 Category::Personal,
             )],
         };
-        write(&index, &dir.path().join("report"))
+        write(&index, &dir.path().join("report"), 50)
             .expect("report should be written");
-        for (name, _) in render(&index).files {
+        for (name, _) in render(&index, 50).files {
             assert!(dir.path().join("report").join(name).is_file(), "{name}");
         }
     }
