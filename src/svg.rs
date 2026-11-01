@@ -20,31 +20,47 @@ const RADIUS: f64 = 4.0;
 const GAP: f64 = 2.0;
 /// Width of a character at 12px, generous, so that wide fonts fit too.
 const CHAR_WIDTH: f64 = 7.5;
+/// CSS classes of the series of a chart, in the order of their colors.
+const SERIES_CLASSES: [&str; 2] = ["bar", "bar2"];
 /// Labels of bars are cut to this many characters.
 const MAX_LABEL: usize = 40;
 
 /// Returns a column chart: one column per label, left to right.
 ///
+/// With several series, their values stack in each column, the first at
+/// the bottom, and a legend names them. At most two series, as the style
+/// has two colors.
+///
 /// # Arguments
 ///
 /// - `title`: The title, for screen readers and on hover.
-/// - `data`: The label and the value of each bar.
+/// - `series`: The names of the series, for the legend.
+/// - `data`: The label and the value of each series of each column.
 #[must_use]
-pub fn columns(title: &str, data: &[(String, u64)]) -> String {
+pub fn columns(
+    title: &str,
+    series: &[&str],
+    data: &[(String, Vec<u64>)],
+) -> String {
     const HEIGHT: f64 = 280.0;
     const LEFT: f64 = 48.0;
     const RIGHT: f64 = 16.0;
-    const TOP: f64 = 16.0;
     const BOTTOM: f64 = 28.0;
     // Minimal distance between labels on the x axis, enough for "2026".
     const LABEL_DISTANCE: f64 = 40.0;
-    let maximum = data.iter().map(|(_, value)| *value).max().unwrap_or(0);
+    let legend = series.len() > 1;
+    let top_margin = if legend { 40.0 } else { 16.0 };
+    let maximum = data
+        .iter()
+        .map(|(_, values)| values.iter().sum::<u64>())
+        .max()
+        .unwrap_or(0);
     if maximum == 0 {
         return empty(title, HEIGHT);
     }
     let (step, top) = nice_scale(maximum);
     let baseline = HEIGHT - BOTTOM;
-    let plot_height = baseline - TOP;
+    let plot_height = baseline - top_margin;
     let y = |value: u64| baseline - value as f64 / top as f64 * plot_height;
     let band = (WIDTH - LEFT - RIGHT) / data.len() as f64;
     let width = (band - GAP).min(MAX_BAR);
@@ -55,6 +71,9 @@ pub fn columns(title: &str, data: &[(String, u64)]) -> String {
         .unwrap_or(100);
 
     let mut body = String::new();
+    if legend {
+        body.push_str(&legend_items(series, LEFT, 16.0));
+    }
     for value in (0..=top).step_by(usize::try_from(step).unwrap_or(1)) {
         let y = y(value);
         let class = if value == 0 { "axis" } else { "grid" };
@@ -72,16 +91,34 @@ pub fn columns(title: &str, data: &[(String, u64)]) -> String {
             compact(value)
         );
     }
-    for (index, (label, value)) in data.iter().enumerate() {
+    for (index, (label, values)) in data.iter().enumerate() {
         let center = LEFT + (index as f64 + 0.5) * band;
-        if *value > 0 {
-            let x = center - width / 2.0;
-            let path = column_path(x, y(*value), width, baseline);
+        let x = center - width / 2.0;
+        let last = values.iter().rposition(|&value| value > 0);
+        let mut below = 0;
+        for (series_index, &value) in values.iter().enumerate() {
+            if value == 0 {
+                continue;
+            }
+            // A gap between stacked segments, so that they never touch.
+            let bottom = if below == 0 { baseline } else { y(below) - GAP };
+            below += value;
+            let path = if Some(series_index) == last {
+                column_path(x, y(below), width, bottom)
+            } else {
+                rect_path(x, y(below), width, bottom)
+            };
+            let name = if legend {
+                format!("{}, {}", escape(label), escape(series[series_index]))
+            } else {
+                escape(label)
+            };
             let _ = write!(
                 body,
-                r#"<path class="bar" d="{path}"><title>{}: {}</title></path>"#,
-                escape(label),
-                number(*value)
+                "<path class=\"{}\" d=\"{path}\">\
+                 <title>{name}: {}</title></path>",
+                SERIES_CLASSES[series_index],
+                number(value)
             );
         }
         if index % every == 0 {
@@ -95,6 +132,36 @@ pub fn columns(title: &str, data: &[(String, u64)]) -> String {
         }
     }
     document(title, HEIGHT, &body)
+}
+
+/// Returns a legend: a colored square and the name of each series.
+///
+/// # Arguments
+///
+/// - `series`: The names of the series.
+/// - `left`: The left edge of the legend.
+/// - `top`: The upper edge of the legend.
+fn legend_items(series: &[&str], left: f64, top: f64) -> String {
+    const SQUARE: f64 = 10.0;
+    let mut legend = String::new();
+    let mut x = left;
+    for (index, name) in series.iter().enumerate() {
+        let _ = write!(
+            legend,
+            "<rect class=\"{}\" x=\"{x:.1}\" y=\"{:.1}\" \
+             width=\"{SQUARE}\" height=\"{SQUARE}\" rx=\"2\"/>",
+            SERIES_CLASSES[index],
+            top - SQUARE + 1.0
+        );
+        let _ = write!(
+            legend,
+            r#"<text x="{:.1}" y="{top:.1}">{}</text>"#,
+            x + SQUARE + 6.0,
+            escape(name)
+        );
+        x += SQUARE + 6.0 + name.chars().count() as f64 * CHAR_WIDTH + 16.0;
+    }
+    legend
 }
 
 /// Returns a horizontal bar chart: one bar per label, top to bottom.
@@ -237,6 +304,18 @@ fn column_path(x: f64, top: f64, width: f64, baseline: f64) -> String {
     )
 }
 
+/// Returns the SVG path of a column segment with square corners.
+///
+/// # Arguments
+///
+/// - `x`: The left edge.
+/// - `top`: The upper end.
+/// - `width`: The width.
+/// - `bottom`: The lower end.
+fn rect_path(x: f64, top: f64, width: f64, bottom: f64) -> String {
+    format!("M{x:.2},{bottom:.2}V{top:.2}H{:.2}V{bottom:.2}Z", x + width)
+}
+
 /// Returns the SVG path of a bar with rounded corners at its end.
 ///
 /// # Arguments
@@ -289,11 +368,13 @@ fn document(title: &str, height: f64, body: &str) -> String {
 <title>{title}</title>
 <style>
 .bar {{ fill: #2a78d6 }}
+.bar2 {{ fill: #eb6834 }}
 .grid {{ stroke: #e1e0d9; stroke-width: 1 }}
 .axis {{ stroke: #c3c2b7; stroke-width: 1 }}
 text {{ fill: #52514e; font: {FONT} }}
 @media (prefers-color-scheme: dark) {{
   .bar {{ fill: #3987e5 }}
+  .bar2 {{ fill: #d95926 }}
   .grid {{ stroke: #2c2c2a }}
   .axis {{ stroke: #383835 }}
   text {{ fill: #c3c2b7 }}
@@ -381,7 +462,8 @@ mod tests {
     fn draws_one_column_per_value_above_zero() {
         let svg = columns(
             "Emails per year",
-            &data(&[("2023", 10), ("2024", 0), ("2025", 25)]),
+            &["Emails"],
+            &single(&data(&[("2023", 10), ("2024", 0), ("2025", 25)])),
         );
         assert_eq!(svg.matches(r#"class="bar""#).count(), 2);
         assert!(svg.contains("<title>2025: 25</title>"), "{svg}");
@@ -390,11 +472,37 @@ mod tests {
         assert!(svg.contains("prefers-color-scheme: dark"), "{svg}");
     }
 
+    /// Returns chart data with one series per label.
+    ///
+    /// # Arguments
+    ///
+    /// - `data`: The label and the value of each column.
+    fn single(data: &[(String, u64)]) -> Vec<(String, Vec<u64>)> {
+        data.iter().map(|(l, v)| (l.clone(), vec![*v])).collect()
+    }
+
+    #[test]
+    fn stacks_two_series_with_a_legend() {
+        let data = [
+            ("2024".to_owned(), vec![10, 5]),
+            ("2025".to_owned(), vec![0, 3]),
+        ];
+        let svg = columns("Emails per year", &["Received", "Sent"], &data);
+        assert!(svg.contains(">Received</text>"), "{svg}");
+        assert!(svg.contains(">Sent</text>"), "{svg}");
+        assert!(svg.contains("<title>2024, Received: 10</title>"), "{svg}");
+        assert!(svg.contains("<title>2024, Sent: 5</title>"), "{svg}");
+        assert!(svg.contains("<title>2025, Sent: 3</title>"), "{svg}");
+        // Three segments and two squares in the legend.
+        assert_eq!(svg.matches(r#"class="bar""#).count(), 2, "{svg}");
+        assert_eq!(svg.matches(r#"class="bar2""#).count(), 3, "{svg}");
+    }
+
     #[test]
     fn thins_out_crowded_column_labels() {
         let years: Vec<_> =
             (1990..2030).map(|year| (year.to_string(), 1)).collect();
-        let svg = columns("Emails per year", &years);
+        let svg = columns("Emails per year", &["Emails"], &single(&years));
         assert!(svg.contains(">1990</text>"), "{svg}");
         assert!(!svg.contains(">1991</text>"), "{svg}");
     }
@@ -414,7 +522,7 @@ mod tests {
 
     #[test]
     fn says_so_without_data() {
-        for svg in [columns("x", &[]), bars("x", &data(&[("a", 0)]))] {
+        for svg in [columns("x", &["x"], &[]), bars("x", &data(&[("a", 0)]))] {
             assert!(svg.contains(">No emails</text>"), "{svg}");
             assert!(!svg.contains(r#"class="bar""#), "{svg}");
         }

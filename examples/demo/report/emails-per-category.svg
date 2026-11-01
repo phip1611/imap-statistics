@@ -4,11 +4,13 @@
 <title>Emails per category</title>
 <style>
 .bar { fill: #2a78d6 }
+.bar2 { fill: #eb6834 }
 .grid { stroke: #e1e0d9; stroke-width: 1 }
 .axis { stroke: #c3c2b7; stroke-width: 1 }
 text { fill: #52514e; font: 12px system-ui, -apple-system, "Segoe UI", sans-serif }
 @media (prefers-color-scheme: dark) {
   .bar { fill: #3987e5 }
+  .bar2 { fill: #d95926 }
   .grid { stroke: #2c2c2a }
   .axis { stroke: #383835 }
   text { fill: #c3c2b7 }

@@ -170,7 +170,11 @@ fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
             count(undated as u64, "email", "emails")
         )));
     }
-    let chart = svg::columns("Emails per year", &data);
+    let columns: Vec<_> = data
+        .iter()
+        .map(|(year, count)| (year.clone(), vec![*count]))
+        .collect();
+    let chart = svg::columns("Emails per year", &["Emails"], &columns);
     (lines, (YEARS_CHART, chart))
 }
 
