@@ -7,7 +7,7 @@ sender.
 """
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 keywords = ["imap", "email", "statistics", "report", "cli"]
 categories = ["command-line-utilities", "email"]
 readme = "README.md"

@@ -20,7 +20,7 @@ jobs:
       matrix:
         runs-on: [ macos-latest, ubuntu-latest, windows-latest ]
         # Specific version: MSRV
-        rust: [ 1.88.0, stable, nightly ]
+        rust: [ 1.95.0, stable, nightly ]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v7
