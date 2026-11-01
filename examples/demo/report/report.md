@@ -72,3 +72,13 @@ emails. The name is the one that the sender used most often.
 |   8 | messages-noreply@linkedin.com | LinkedIn      |    331 |
 |   9 | orders@shop.example.com       | Example Shop  |    228 |
 |  10 | billing@telco.example.net     | Example Telco |    163 |
+
+## Top recipients
+
+![Top recipients](top-recipients.svg)
+
+0 recipient addresses in sent emails, from To, Cc, and Bcc. An email to several
+recipients counts for each of them. Own addresses do not count.
+
+|   # | Recipient | Emails |
+| --: | :-------- | -----: |

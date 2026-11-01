@@ -4,7 +4,7 @@
 //! charts next to it.
 
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::mem;
 use std::path::Path;
@@ -21,11 +21,12 @@ pub const REPORT_FILE: &str = "report.md";
 const YEARS_CHART: &str = "emails-per-year.svg";
 const CATEGORIES_CHART: &str = "emails-per-category.svg";
 const SENDERS_CHART: &str = "top-senders.svg";
+const RECIPIENTS_CHART: &str = "top-recipients.svg";
 /// Format of the time of the report: RFC 3339 in UTC, with a space
 /// instead of the `T`, which RFC 3339 allows for readability, so that
 /// people and programs can read it, e.g. `2026-11-01 13:45:07Z`.
 const GENERATED_FORMAT: &str = "%Y-%m-%d %H:%M:%SZ";
-/// Senders in the chart. More would make it too high to read.
+/// Senders or recipients in a chart. More would make it too high to read.
 const CHART_SENDERS: usize = 20;
 /// Paragraphs of the Markdown source are wrapped at this width, so that the
 /// report reads well as plain text too. Tables may be wider.
@@ -90,9 +91,12 @@ fn render(
     )));
     markdown.extend(accounts(index, sources));
     let mut files = Vec::new();
-    for (section, chart) in
-        [years(index), categories(index), senders(index, top)]
-    {
+    for (section, chart) in [
+        years(index),
+        categories(index),
+        senders(index, top),
+        recipients(index, sources, top),
+    ] {
         markdown.extend(section);
         files.push(chart);
     }
@@ -313,6 +317,65 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
         .collect();
     let title = format!("Top {} senders", data.len());
     (lines, (SENDERS_CHART, svg::bars(&title, &data)))
+}
+
+/// Returns the section with the top recipients of sent emails, and its
+/// chart.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+/// - `sources`: The email accounts of the config, whose own addresses do
+///   not count as recipients.
+/// - `top`: The number of recipients in the table.
+fn recipients(
+    index: &Index,
+    sources: &[Source],
+    top: usize,
+) -> (Vec<String>, (&'static str, String)) {
+    let own: HashSet<String> =
+        sources.iter().flat_map(Source::own_addresses).collect();
+    let mut recipients: BTreeMap<&str, u64> = BTreeMap::new();
+    let sent = index.emails.iter().filter(|e| e.sent);
+    for recipient in sent.flat_map(|e| &e.recipients) {
+        if !own.contains(recipient) {
+            *recipients.entry(recipient).or_default() += 1;
+        }
+    }
+    // The most emails first, ties by address, so that the order is stable.
+    let mut ranked: Vec<_> = recipients.into_iter().collect();
+    ranked.sort_by_key(|&(address, emails)| (Reverse(emails), address));
+    let shown = &ranked[..top.min(ranked.len())];
+
+    let mut lines = vec![
+        "## Top recipients".to_owned(),
+        String::new(),
+        format!("![Top recipients]({RECIPIENTS_CHART})"),
+        String::new(),
+    ];
+    lines.extend(paragraph(&format!(
+        "{} in sent emails, from To, Cc, and Bcc. An email to several \
+         recipients counts for each of them. Own addresses do not count.",
+        count(
+            ranked.len() as u64,
+            "recipient address",
+            "recipient addresses"
+        ),
+    )));
+    lines.extend(table(
+        &["#", "Recipient", "Emails"],
+        &[0, 2],
+        shown.iter().enumerate().map(|(rank, &(address, emails))| {
+            vec![(rank + 1).to_string(), escape(address), number(emails)]
+        }),
+    ));
+    let data: Vec<_> = shown
+        .iter()
+        .take(CHART_SENDERS)
+        .map(|&(address, emails)| (address.to_owned(), emails))
+        .collect();
+    let title = format!("Top {} recipients", data.len());
+    (lines, (RECIPIENTS_CHART, svg::bars(&title, &data)))
 }
 
 /// Returns the most used name, the first in alphabetical order on ties.
@@ -743,6 +806,37 @@ mod tests {
         );
         let chart = file(&report, SENDERS_CHART);
         assert!(chart.contains("<title>Top 2 senders</title>"), "{chart}");
+    }
+
+    #[test]
+    fn ranks_the_top_recipients_of_sent_emails() {
+        // Boring setup: two sent emails, one to a and b, one to a and the
+        // own address, and a received email.
+        let sent = |recipients: &[&str]| Entry {
+            sent: true,
+            recipients: recipients.iter().map(|&r| r.to_owned()).collect(),
+            ..entry(Some(2024), "work@example.com", Category::Personal)
+        };
+        let index = Index {
+            emails: vec![
+                sent(&["a@example.com", "b@example.com"]),
+                sent(&["a@example.com", "work@example.com"]),
+                entry(Some(2024), "c@example.com", Category::Personal),
+            ],
+        };
+
+        let report = render(&index, &[source("work")], GENERATED, 50);
+
+        let markdown = file(&report, REPORT_FILE);
+        let section = &markdown[markdown
+            .find("## Top recipients")
+            .expect("report should have the section")..];
+        assert_eq!(
+            rows(section, "#"),
+            [["1", "a@example.com", "2"], ["2", "b@example.com", "1"]]
+        );
+        let chart = file(&report, RECIPIENTS_CHART);
+        assert!(chart.contains("<title>a@example.com: 2</title>"), "{chart}");
     }
 
     #[test]
