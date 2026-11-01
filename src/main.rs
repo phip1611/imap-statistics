@@ -2,11 +2,12 @@
 
 //! CLI to generate statistics about the emails in IMAP accounts.
 
+use std::env;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
+use jiff::Timestamp;
 
 use imap_statistics::config::Config;
 use imap_statistics::fetch;
@@ -125,8 +126,7 @@ fn index(config: &Config) -> anyhow::Result<()> {
         }
         sources.push((source.name.clone(), headers));
     }
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let index = Index::build(&sources, i64::try_from(now)?);
+    let index = Index::build(&sources, now()?.as_second());
     let path = config.data_dir.join(INDEX_FILE);
     index.write(&path)?;
     let copies: usize = sources.iter().map(|(_, headers)| headers.len()).sum();
@@ -155,7 +155,7 @@ fn report(
     let index = Index::read(&config.data_dir.join(INDEX_FILE))
         .context("no index, run `index` first")?;
     let output = output.unwrap_or_else(|| config.data_dir.join("report"));
-    report::write(&index, &output, top)?;
+    report::write(&index, &config.sources, now()?, &output, top)?;
     eprintln!("Wrote {}", output.join(REPORT_FILE).display());
     // The PDF is a convenience, so its errors are only warnings.
     match pdf::convert(&output, REPORT_FILE) {
@@ -163,4 +163,20 @@ fn report(
         Err(error) => eprintln!("warning: {error:#}"),
     }
     Ok(())
+}
+
+/// Returns the current time.
+///
+/// `SOURCE_DATE_EPOCH` overrides it, as reproducible builds do, so that the
+/// demo report is the same every time.
+fn now() -> anyhow::Result<Timestamp> {
+    let Ok(epoch) = env::var("SOURCE_DATE_EPOCH") else {
+        return Ok(Timestamp::now());
+    };
+    epoch
+        .trim()
+        .parse()
+        .ok()
+        .and_then(|seconds| Timestamp::from_second(seconds).ok())
+        .with_context(|| format!("invalid SOURCE_DATE_EPOCH {epoch:?}"))
 }

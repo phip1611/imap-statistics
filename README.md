@@ -1,8 +1,8 @@
 # imap-statistics
 
 CLI to fetch the headers of all emails from IMAP accounts and generate a
-Markdown report with statistics: emails per year, per category, and per
-sender. See the [demo report](examples/demo/report/report.md) of
+Markdown report with statistics: emails per account, per year, per category,
+and per sender. See the [demo report](examples/demo/report/report.md) of
 made-up emails.
 
 The tool only reads from the IMAP servers and never changes a mailbox,
@@ -51,6 +51,10 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    It is written to `report/report.md` in the data directory, with SVG
    charts next to it. `--output <dir>` writes it elsewhere, and `--top <n>`
    sets the number of senders in the list of top senders (default: 50).
+
+   The report states when it was generated, in UTC. If set,
+   `SOURCE_DATE_EPOCH` (seconds since 1970) overrides that time, e.g. for
+   reproducible reports.
 
    If [pandoc](https://pandoc.org) is installed, `report` also converts the
    report into `report.pdf`. With [typst](https://typst.app) installed as

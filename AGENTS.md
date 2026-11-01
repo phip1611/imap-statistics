@@ -19,6 +19,9 @@ User docs are in [README.md](README.md).
 
 ## Checks
 
+`nix develop`, or direnv with `.envrc`, provides rustup, and pandoc with
+typst for the PDF of the report.
+
 Run before every commit. Every commit of a series must pass them:
 
 ```sh

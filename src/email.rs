@@ -2,7 +2,11 @@
 
 //! The headers of an email that the statistics need.
 
+use jiff::fmt::strtime;
 use mailparse::{MailAddr, MailHeader, MailHeaderMap, addrparse_header};
+
+/// Format of `INTERNALDATE` (RFC 3501, section 9), with its offset.
+const INTERNALDATE_FORMAT: &str = "%d-%b-%Y %H:%M:%S %z";
 
 /// The sender of an email.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,8 +114,9 @@ fn parse_date(date: &str) -> Option<i64> {
 ///   e.g. `17-Jul-1996 02:44:25 -0700`.
 #[must_use]
 pub fn parse_internaldate(internaldate: &str) -> Option<i64> {
-    // As in RFC 5322, but with dashes between day, month, and year.
-    parse_date(&internaldate.trim().replacen('-', " ", 2))
+    let parsed =
+        strtime::parse(INTERNALDATE_FORMAT, internaldate.trim()).ok()?;
+    Some(parsed.to_timestamp().ok()?.as_second())
 }
 
 #[cfg(test)]
@@ -211,6 +216,10 @@ mod tests {
         assert_eq!(
             parse_internaldate(" 1-Jan-2024 10:00:00 +0000"),
             Some(NEW_YEAR)
+        );
+        assert_eq!(
+            parse_internaldate("17-Jul-1996 02:44:25 -0700"),
+            Some(837_596_665)
         );
         assert_eq!(parse_internaldate("garbage"), None);
     }
