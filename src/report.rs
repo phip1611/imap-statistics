@@ -198,14 +198,16 @@ fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
         .iter()
         .map(|&category| (category, 0))
         .collect();
-    for email in &index.emails {
+    // Sent emails are by the owner, so their category says little.
+    let received: Vec<_> = index.emails.iter().filter(|e| !e.sent).collect();
+    for email in &received {
         *counts.entry(email.category).or_default() += 1;
     }
     let mut counts: Vec<_> = counts.into_iter().collect();
     // The largest first. The sort is stable, so ties keep the order of
     // the rules.
     counts.sort_by_key(|&(_, count)| Reverse(count));
-    let total = index.emails.len().max(1) as u64;
+    let total = received.len().max(1) as u64;
     let mut lines = vec![
         "## Emails per category".to_owned(),
         String::new(),
@@ -225,8 +227,8 @@ fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
         }),
     ));
     lines.extend(paragraph(
-        "The categories come from simple rules on the headers, so a few \
-         emails are in the wrong category.",
+        "Only received emails count. The categories come from simple rules \
+         on the headers, so a few emails are in the wrong category.",
     ));
     let data: Vec<_> = counts
         .iter()
@@ -252,7 +254,9 @@ struct Sender {
 /// - `top`: The number of senders in the table.
 fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
     let mut senders: BTreeMap<&str, Sender> = BTreeMap::new();
-    for email in &index.emails {
+    // Sent emails are all from the owner.
+    let received: Vec<_> = index.emails.iter().filter(|e| !e.sent).collect();
+    for email in &received {
         let Some(address) = &email.sender else {
             continue;
         };
@@ -262,13 +266,13 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
             *sender.names.entry(name.clone()).or_default() += 1;
         }
     }
-    let without = index.emails.len() as u64
-        - senders.values().map(|s| s.emails).sum::<u64>();
+    let without =
+        received.len() as u64 - senders.values().map(|s| s.emails).sum::<u64>();
     // The most emails first, ties by address, so that the order is stable.
     let mut ranked: Vec<_> = senders.into_iter().collect();
     ranked.sort_by_key(|(address, sender)| (Reverse(sender.emails), *address));
     let shown = &ranked[..top.min(ranked.len())];
-    let total = index.emails.len().max(1) as u64;
+    let total = received.len().max(1) as u64;
     let share: u64 =
         shown.iter().map(|(_, s)| s.emails).sum::<u64>() * 100 / total;
 
@@ -279,8 +283,8 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
         String::new(),
     ];
     lines.extend(paragraph(&format!(
-        "{}. The top {} sent {share}% of all emails. The name is the one \
-         that the sender used most often.",
+        "{} in received emails. The top {} sent {share}% of all received \
+         emails. The name is the one that the sender used most often.",
         count(ranked.len() as u64, "sender address", "sender addresses"),
         number(shown.len() as u64),
     )));
@@ -648,6 +652,11 @@ mod tests {
                 entry(Some(2024), "n@example.com", Category::Newsletter),
                 entry(Some(2024), "m@example.com", Category::Newsletter),
                 entry(Some(2024), "s@example.com", Category::Social),
+                // A sent email, which does not count.
+                Entry {
+                    sent: true,
+                    ..entry(Some(2024), "me@example.com", Category::Personal)
+                },
             ],
         };
         let report = render(&index, &[], GENERATED, 50);
@@ -704,14 +713,20 @@ mod tests {
         let mut anonymous = entry(Some(2024), "", Category::Personal);
         anonymous.sender = None;
         emails.push(anonymous);
+        // A sent email, which does not count.
+        let mut sent = entry(Some(2024), "me@example.com", Category::Personal);
+        sent.sent = true;
+        emails.push(sent);
         let index = Index { emails };
 
         let report = render(&index, &[], GENERATED, 2);
 
         let markdown = file(&report, REPORT_FILE);
+        // Line breaks of paragraphs do not matter here.
         assert!(
-            markdown.contains(
-                "3 sender addresses. The top 2 sent 71% of all emails."
+            markdown.replace('\n', " ").contains(
+                "3 sender addresses in received emails. The top 2 sent 71% of \
+                 all received emails."
             ),
             "{markdown}"
         );

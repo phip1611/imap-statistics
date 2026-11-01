@@ -50,15 +50,15 @@ Left out for lack of a usable date: 7 emails.
 | social       |    708 |   12% | from a social network or dating site         |
 | shopping     |    391 |    6% | about an order, payment, or delivery         |
 
-The categories come from simple rules on the headers, so a few emails are in the
-wrong category.
+Only received emails count. The categories come from simple rules on the
+headers, so a few emails are in the wrong category.
 
 ## Top senders
 
 ![Top senders](top-senders.svg)
 
-10 sender addresses. The top 10 sent 100% of all emails. The name is the one
-that the sender used most often.
+10 sender addresses in received emails. The top 10 sent 100% of all received
+emails. The name is the one that the sender used most often.
 
 |   # | Sender                        | Name          | Emails |
 | --: | :---------------------------- | :------------ | -----: |
