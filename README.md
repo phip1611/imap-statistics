@@ -16,6 +16,19 @@ Windows.
 cargo install --locked --git https://github.com/phip1611/imap-statistics
 ```
 
+## Usage
+
+1. Copy [`imap-statistics.example.toml`](imap-statistics.example.toml) to
+   `imap-statistics.toml` and fill in your IMAP accounts. The file holds
+   passwords: keep it private.
+2. Check the config:
+
+   ```sh
+   imap-statistics check-config
+   ```
+
+`--config <path>` selects another config file.
+
 ## License
 
 Licensed under either of

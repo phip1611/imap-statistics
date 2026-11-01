@@ -183,6 +183,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_example_config() {
+        let text = include_str!("../imap-statistics.example.toml");
+        let config = Config::parse(text, Path::new(""))
+            .expect("example config should be valid");
+        assert_eq!(config.sources.len(), 2);
+    }
+
+    #[test]
     fn keeps_sources_in_order() {
         let config = Config::parse(&two_sources("b", "a"), Path::new(""))
             .expect("config should be valid");
