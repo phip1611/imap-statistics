@@ -6,3 +6,4 @@
 //! is no stable API for other crates.
 
 pub mod config;
+pub mod imap;
