@@ -13,3 +13,4 @@ name = "private"
 host = "imap.example.org"
 username = "me@example.org"
 password = "unused"
+addresses = ["me@old.example.net"]
