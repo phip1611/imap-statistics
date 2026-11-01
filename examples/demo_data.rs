@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Writes made-up headers into a data directory, as if `fetch` had
-//! fetched them, for the demo report in `examples/demo`.
+//! Writes made-up headers into a data directory, as if they had been
+//! fetched, for the demo report in `examples/demo`.
 //!
 //! The data is deterministic, so that the demo report only changes when
 //! the code does. It covers every category, copies of emails in both
