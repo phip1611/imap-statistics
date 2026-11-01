@@ -16,6 +16,17 @@ use anyhow::{Context, bail};
 
 /// The name of the PDF file next to the Markdown report.
 pub const PDF_FILE: &str = "report.pdf";
+/// Typst rules for the layout of the PDF.
+const TYPST_RULES: [&str; 4] = [
+    // pandoc puts each table into a figure, which typst keeps on one page,
+    // so that long tables ran over the bottom of the page.
+    "#show figure: set block(breakable: true)",
+    // The heading above a chart already names it.
+    "#show figure.caption: none",
+    // Shaded rows keep long lists readable.
+    "#set table(fill: (_, y) => if calc.odd(y) { luma(242) })",
+    "#show table.cell.where(y: 0): strong",
+];
 /// The font of the PDF with the typst engine.
 const TYPST_FONT: &str = "Libertinus Serif";
 
@@ -43,18 +54,8 @@ fn convert_with(
     dir: &Path,
     markdown: &str,
 ) -> anyhow::Result<()> {
-    let mut args = vec![
-        markdown.to_owned(),
-        "--output".to_owned(),
-        PDF_FILE.to_owned(),
-    ];
-    if is_installed(typst) {
-        args.push(format!("--pdf-engine={typst}"));
-        // pandoc 3.7 passes an empty list of fonts, which typst 0.14
-        // rejects. Libertinus Serif comes with typst and covers Latin,
-        // Greek, and Cyrillic.
-        args.push(format!("--variable=mainfont:{TYPST_FONT}"));
-    }
+    let typst = is_installed(typst).then_some(typst);
+    let args = arguments(markdown, typst);
     let status = Command::new(pandoc)
         .current_dir(dir)
         .args(&args)
@@ -81,6 +82,40 @@ fn convert_with(
         );
     }
     Ok(())
+}
+
+/// Returns the arguments of pandoc.
+///
+/// # Arguments
+///
+/// - `markdown`: The name of the Markdown report.
+/// - `typst`: The name of the typst program, if it is installed.
+fn arguments(markdown: &str, typst: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        markdown.to_owned(),
+        "--output".to_owned(),
+        PDF_FILE.to_owned(),
+        // The heading of the report becomes the title of the PDF, above
+        // the table of contents, instead of an entry in it.
+        "--shift-heading-level-by=-1".to_owned(),
+        // The lists of all senders and recipients make the PDF long.
+        "--toc".to_owned(),
+        "--variable=papersize:a4".to_owned(),
+        "--variable=fontsize:10pt".to_owned(),
+    ];
+    if let Some(typst) = typst {
+        args.push(format!("--pdf-engine={typst}"));
+        // pandoc 3.7 passes an empty list of fonts, which typst 0.14
+        // rejects. Libertinus Serif comes with typst and covers Latin,
+        // Greek, and Cyrillic.
+        args.push(format!("--variable=mainfont:{TYPST_FONT}"));
+        args.extend(
+            TYPST_RULES
+                .iter()
+                .map(|rule| format!("--variable=header-includes:{rule}")),
+        );
+    }
+    args
 }
 
 /// Quotes arguments with spaces, so that a shell takes them as one.
@@ -133,6 +168,22 @@ mod tests {
             error.to_string(),
             format!("{MISSING} not found in PATH, skipping report.pdf")
         );
+    }
+
+    /// The layout rules are Typst code, which would break other PDF
+    /// engines, e.g. LaTeX, so only typst gets them.
+    #[test]
+    fn passes_layout_rules_to_typst_only() {
+        let with_typst = arguments("report.md", Some("typst"));
+        assert!(with_typst.contains(&"--pdf-engine=typst".to_owned()));
+        assert!(with_typst.contains(
+            &"--variable=header-includes:#show figure: set block(breakable: \
+              true)"
+                .to_owned()
+        ));
+        let without = arguments("report.md", None);
+        assert!(!without.iter().any(|arg| arg.contains("header-includes")));
+        assert!(!without.iter().any(|arg| arg.contains("pdf-engine")));
     }
 
     #[test]
