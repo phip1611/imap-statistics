@@ -17,6 +17,10 @@ username = "me@example.com"
 # Many providers require an app password if two-factor authentication is
 # enabled, e.g. Gmail: https://myaccount.google.com/apppasswords
 password = "app password"
+# Optional: other addresses of yours, e.g. aliases or old addresses. Emails
+# from them, and from the username, count as sent, as do emails in a Sent
+# folder.
+addresses = ["me@old.example.com"]
 
 [[source]]
 name = "private"

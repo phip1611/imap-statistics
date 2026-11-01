@@ -41,6 +41,26 @@ pub struct Source {
     pub port: u16,
     pub username: String,
     pub password: Password,
+    /// Other addresses of the owner of the account, e.g. aliases or old
+    /// addresses, in addition to the username.
+    #[serde(default)]
+    pub addresses: Vec<String>,
+}
+
+impl Source {
+    /// Returns the addresses of the owner of the account, in lowercase.
+    ///
+    /// These are the username, if it is an address, and the other
+    /// addresses. Emails from them count as sent.
+    #[must_use]
+    pub fn own_addresses(&self) -> Vec<String> {
+        let username = Some(&self.username).filter(|u| u.contains('@'));
+        username
+            .into_iter()
+            .chain(&self.addresses)
+            .map(|address| address.trim().to_lowercase())
+            .collect()
+    }
 }
 
 /// A password, which [`fmt::Debug`] does not print.
@@ -119,6 +139,14 @@ impl Config {
             }
             if source.password.expose().is_empty() {
                 bail!("empty password for source {:?}", source.name);
+            }
+            if let Some(address) =
+                source.addresses.iter().find(|a| !a.contains('@'))
+            {
+                bail!(
+                    "invalid address {address:?} of source {:?}",
+                    source.name
+                );
             }
         }
         Ok(())
@@ -259,6 +287,36 @@ mod tests {
                 "{name:?}: {message}"
             );
         }
+    }
+
+    #[test]
+    fn returns_own_addresses_in_lowercase() {
+        let text = MINIMAL.replace(
+            r#"password = "secret""#,
+            r#"password = "secret"
+        addresses = ["Me@Old.Example.com"]"#,
+        );
+        let config = Config::parse(&text, Path::new(""))
+            .expect("config should be valid");
+        assert_eq!(
+            config.sources[0].own_addresses(),
+            ["me@example.com", "me@old.example.com"]
+        );
+        // A username that is no address is no own address.
+        let text = MINIMAL.replace(r#""me@example.com""#, r#""me""#);
+        let config = Config::parse(&text, Path::new(""))
+            .expect("config should be valid");
+        assert!(config.sources[0].own_addresses().is_empty());
+    }
+
+    #[test]
+    fn rejects_other_addresses_that_are_no_addresses() {
+        let text = MINIMAL.replace(
+            r#"password = "secret""#,
+            r#"password = "secret"
+        addresses = ["me"]"#,
+        );
+        assert_eq!(error(&text), r#"invalid address "me" of source "work""#);
     }
 
     #[test]
