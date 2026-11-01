@@ -1,0 +1,11 @@
+Sender,Name,Category,Emails,First,Last
+noreply@ci.example.com,Example CI,notification,1050,2013,2025
+ben.miller@example.com,Ben Miller,personal,895,2012,2025
+news@shop.example.com,Example Shop,newsletter,892,2012,2025
+digest@forum.example.org,Example Forum,newsletter,647,2012,2025
+anna.schmidt@example.org,Anna Schmidt,personal,575,2012,2025
+chen.li@example.net,Chen Li,personal,445,2012,2025
+notification@facebookmail.com,Facebook,social,377,2012,2025
+messages-noreply@linkedin.com,LinkedIn,social,331,2012,2025
+orders@shop.example.com,Example Shop,shopping,228,2012,2025
+billing@telco.example.net,Example Telco,shopping,163,2012,2025
