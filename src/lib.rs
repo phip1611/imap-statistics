@@ -9,6 +9,7 @@ pub mod category;
 pub mod config;
 pub mod email;
 pub mod fetch;
+pub mod hint;
 pub mod imap;
 pub mod index;
 pub mod report;
