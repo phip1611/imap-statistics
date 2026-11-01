@@ -89,7 +89,8 @@ pub fn fetch<S: Read + Write>(
             })?;
         summary.emails += state.uids.len();
         summary.fetched += fetched;
-        states.insert(folder.name.clone(), state);
+        let sent = folder.attributes.iter().any(|a| a == "\\sent");
+        states.insert(folder.name.clone(), FolderState { sent, ..state });
     }
     store.save_folders(&states)?;
     Ok(summary)
@@ -140,6 +141,7 @@ fn fetch_folder<S: Read + Write>(
     let state = FolderState {
         uidvalidity: status.uidvalidity,
         uids,
+        sent: false,
     };
     Ok((state, fetched))
 }
@@ -172,6 +174,8 @@ fn batch_progress(elapsed: Duration, done: usize, total: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::store;
     use crate::test_util::{TempDir, fake_client, sent};
@@ -207,12 +211,13 @@ mod tests {
 
     #[test]
     fn fetches_new_headers_of_selected_folders() {
-        // Boring setup: a server with INBOX, an empty folder, and the trash.
+        // Boring setup: a server with INBOX, an empty Sent folder, and the
+        // trash.
         let dir = TempDir::new("fetch-new");
         let mut store = Store::open(dir.path()).expect("store should open");
         let responses = [
             "* LIST () \"/\" INBOX\r\n".into(),
-            "* LIST () \"/\" Empty\r\n".into(),
+            "* LIST (\\Sent) \"/\" Sent\r\n".into(),
             "* LIST (\\Trash) \"/\" Trash\r\n".into(),
             "A1 OK\r\n".into(),
             "* 2 EXISTS\r\n* OK [UIDVALIDITY 7] x\r\nA2 OK\r\n".into(),
@@ -237,7 +242,7 @@ mod tests {
              A2 EXAMINE \"INBOX\"\r\n\
              A3 UID SEARCH ALL\r\n\
              A4 UID FETCH 3,5 (UID INTERNALDATE BODY.PEEK[HEADER])\r\n\
-             A5 EXAMINE \"Empty\"\r\n"
+             A5 EXAMINE \"Sent\"\r\n"
         );
         assert_eq!(
             summary,
@@ -260,6 +265,10 @@ mod tests {
         assert_eq!(
             uids(dir.path()),
             [("INBOX".into(), 3), ("INBOX".into(), 5)]
+        );
+        assert_eq!(
+            store::sent_folders(dir.path()).expect("store should load"),
+            HashSet::from(["Sent".to_owned()])
         );
     }
 

@@ -191,6 +191,7 @@ fn main() -> anyhow::Result<()> {
             FolderState {
                 uidvalidity: UIDVALIDITY,
                 uids,
+                sent: false,
             },
         )]);
         store
