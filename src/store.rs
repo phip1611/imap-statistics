@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use crate::imap::FetchedHeader;
 
 const HEADERS_FILE: &str = "headers.jsonl";
-const FOLDERS_FILE: &str = "folders.json";
+pub(crate) const FOLDERS_FILE: &str = "folders.json";
 
 /// The header of an email, as stored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -3,8 +3,11 @@
 //! Fetches the headers of all new emails of a source into its store.
 
 use std::collections::BTreeMap;
+use std::error::Error;
+use std::fmt;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -28,25 +31,62 @@ pub struct Summary {
     pub fetched: usize,
 }
 
+/// The error of a fetch that the user cancelled.
+///
+/// The fetched headers stay in the store, so that the next fetch continues
+/// where this one stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cancelled;
+
+impl fmt::Display for Cancelled {
+    /// Writes the message of the error.
+    ///
+    /// # Arguments
+    ///
+    /// - `f`: The formatter.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("cancelled")
+    }
+}
+
+impl Error for Cancelled {}
+
+/// Fails with [`Cancelled`] if the user cancelled the fetch.
+///
+/// # Arguments
+///
+/// - `cancel`: Set when the user cancels.
+fn check(cancel: &AtomicBool) -> anyhow::Result<()> {
+    if cancel.load(Ordering::Relaxed) {
+        Err(Cancelled.into())
+    } else {
+        Ok(())
+    }
+}
+
 /// Connects to a source and fetches its new headers into its store.
 ///
 /// # Arguments
 ///
 /// - `source`: The source from the config.
 /// - `data_dir`: The data directory, which has the store of every source.
+/// - `cancel`: Set when the user cancels. The fetch then stops at the next
+///   folder or batch with [`Cancelled`].
 /// - `progress`: Receives messages for the user. They contain counts only,
 ///   no data of the mailbox.
 pub fn fetch_source(
     source: &Source,
     data_dir: &Path,
+    cancel: &AtomicBool,
     mut progress: impl FnMut(&str),
 ) -> anyhow::Result<Summary> {
     progress("reading the stored headers");
     let mut store = Store::open(&data_dir.join(&source.name))?;
     let mut client = imap::connect(&source.host, source.port, &mut progress)?;
+    check(cancel)?;
     progress("logging in");
     client.login(&source.username, source.password.expose())?;
-    let summary = fetch(&mut client, &mut store, progress)?;
+    let summary = fetch(&mut client, &mut store, cancel, progress)?;
     client.logout()?;
     Ok(summary)
 }
@@ -60,10 +100,12 @@ pub fn fetch_source(
 ///
 /// - `client`: The client, logged in.
 /// - `store`: The store of the source.
+/// - `cancel`: Set when the user cancels.
 /// - `progress`: Receives messages for the user, with counts only.
 pub fn fetch<S: Read + Write>(
     client: &mut Client<S>,
     store: &mut Store,
+    cancel: &AtomicBool,
     mut progress: impl FnMut(&str),
 ) -> anyhow::Result<Summary> {
     progress("listing the folders");
@@ -77,7 +119,7 @@ pub fn fetch<S: Read + Write>(
     for (index, folder) in folders.iter().enumerate() {
         let number = index + 1;
         let (state, fetched) =
-            fetch_folder(client, store, &folder.name, |message| {
+            fetch_folder(client, store, &folder.name, cancel, |message| {
                 progress(&format!(
                     "folder {number} of {}: {message}",
                     folders.len()
@@ -104,13 +146,16 @@ pub fn fetch<S: Read + Write>(
 /// - `client`: The client, logged in.
 /// - `store`: The store of the source.
 /// - `folder`: The name of the folder, as the server listed it.
+/// - `cancel`: Set when the user cancels.
 /// - `progress`: Receives messages for the user, with counts only.
 fn fetch_folder<S: Read + Write>(
     client: &mut Client<S>,
     store: &mut Store,
     folder: &str,
+    cancel: &AtomicBool,
     mut progress: impl FnMut(&str),
 ) -> anyhow::Result<(FolderState, usize)> {
+    check(cancel)?;
     let status = client.examine(folder)?;
     // An empty folder has no UIDs to search, and some servers fail then.
     let uids = if status.exists == 0 {
@@ -125,6 +170,7 @@ fn fetch_folder<S: Read + Write>(
     let mut fetched = 0;
     let started = Instant::now();
     for batch in missing.chunks(BATCH) {
+        check(cancel)?;
         client.fetch_headers(batch, |header| {
             fetched += 1;
             store.append(folder, status.uidvalidity, header)
@@ -179,6 +225,9 @@ mod tests {
     use crate::store;
     use crate::test_util::{TempDir, fake_client, sent};
 
+    /// A flag of a fetch that nobody cancels.
+    static NOT_CANCELLED: AtomicBool = AtomicBool::new(false);
+
     /// Returns a FETCH response with a header.
     ///
     /// # Arguments
@@ -232,9 +281,10 @@ mod tests {
         let mut client = fake_client(responses.as_bytes());
         let mut messages = Vec::new();
 
-        let summary =
-            fetch(&mut client, &mut store, |m| messages.push(m.to_owned()))
-                .expect("fetch should succeed");
+        let summary = fetch(&mut client, &mut store, &NOT_CANCELLED, |m| {
+            messages.push(m.to_owned())
+        })
+        .expect("fetch should succeed");
 
         // The trash is skipped, and the empty folder is not searched.
         assert_eq!(
@@ -273,6 +323,41 @@ mod tests {
         );
     }
 
+    /// A cancelled fetch keeps what it fetched, but must not save the
+    /// emails per folder, as the folders that it skipped would look empty.
+    #[test]
+    fn stops_at_the_next_batch_when_cancelled() {
+        // Boring setup: a server with two folders, and a cancel when the
+        // first folder is searched.
+        let dir = TempDir::new("fetch-cancel");
+        let mut store = Store::open(dir.path()).expect("store should open");
+        let responses = [
+            "* LIST () \"/\" INBOX\r\n* LIST () \"/\" Old\r\nA1 OK\r\n",
+            "* 2 EXISTS\r\n* OK [UIDVALIDITY 7] x\r\nA2 OK\r\n",
+            "* SEARCH 3 5\r\nA3 OK\r\n",
+        ]
+        .concat();
+        let mut client = fake_client(responses.as_bytes());
+        let cancel = AtomicBool::new(false);
+
+        let error = fetch(&mut client, &mut store, &cancel, |message| {
+            if message.ends_with("2 new") {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        })
+        .expect_err("fetch should be cancelled");
+
+        assert!(error.is::<Cancelled>(), "{error:#}");
+        // No UID FETCH, and no second folder.
+        assert_eq!(
+            sent(&client),
+            "A1 LIST \"\" \"*\"\r\n\
+             A2 EXAMINE \"INBOX\"\r\n\
+             A3 UID SEARCH ALL\r\n"
+        );
+        assert!(!dir.path().join(store::FOLDERS_FILE).exists());
+    }
+
     /// A second fetch only fetches new emails, and drops emails that were
     /// deleted on the server in the meantime.
     #[test]
@@ -289,7 +374,8 @@ mod tests {
         ]
         .concat();
         let mut client = fake_client(first.as_bytes());
-        fetch(&mut client, &mut store, |_| {}).expect("fetch should succeed");
+        fetch(&mut client, &mut store, &NOT_CANCELLED, |_| {})
+            .expect("fetch should succeed");
 
         // Email 1 was deleted on the server, email 3 is new.
         let second = [
@@ -301,7 +387,7 @@ mod tests {
         ]
         .concat();
         let mut client = fake_client(second.as_bytes());
-        let summary = fetch(&mut client, &mut store, |_| {})
+        let summary = fetch(&mut client, &mut store, &NOT_CANCELLED, |_| {})
             .expect("fetch should succeed");
 
         assert!(
@@ -346,7 +432,7 @@ mod tests {
         let mut store = Store::open(dir.path()).expect("store should open");
         let responses = b"* LIST () \"/\" INBOX\r\nA1 OK\r\nA2 NO gone\r\n";
         let mut client = fake_client(responses);
-        let error = fetch(&mut client, &mut store, |_| {})
+        let error = fetch(&mut client, &mut store, &NOT_CANCELLED, |_| {})
             .expect_err("fetch should fail");
         assert_eq!(
             format!("{error:#}"),

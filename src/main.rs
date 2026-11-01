@@ -4,6 +4,7 @@
 
 use std::env;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
@@ -75,8 +76,17 @@ fn run(
     top: usize,
 ) -> anyhow::Result<()> {
     let mut log = |line: &str| eprintln!("{line}");
-    let outcome =
-        run::run(config, offline, output.as_deref(), top, now()?, &mut log)?;
+    // Ctrl+C ends the process, so the CLI needs no cancel.
+    let cancel = AtomicBool::new(false);
+    let outcome = run::run(
+        config,
+        offline,
+        output.as_deref(),
+        top,
+        now()?,
+        &cancel,
+        &mut log,
+    )?;
     if outcome.failed > 0 {
         bail!(
             "{} of {} sources failed",

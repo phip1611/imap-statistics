@@ -5,11 +5,12 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use jiff::Timestamp;
 
 use crate::config::{Config, Source};
-use crate::fetch;
+use crate::fetch::{self, Cancelled};
 use crate::hint::hint;
 use crate::index::{INDEX_FILE, Index, SourceEmails};
 use crate::pdf::{self, PDF_FILE};
@@ -28,7 +29,8 @@ pub struct Outcome {
 /// Fetches all sources, indexes the emails, and generates the report.
 ///
 /// A failed source keeps its emails of earlier runs, so that the report is
-/// still useful. The caller decides how to treat [`Outcome::failed`].
+/// still useful. The caller decides how to treat [`Outcome::failed`]. A
+/// cancelled run stops with [`Cancelled`], without a report.
 ///
 /// # Arguments
 ///
@@ -38,6 +40,7 @@ pub struct Outcome {
 /// - `top`: The number of senders and recipients in each list of top
 ///   ones.
 /// - `now`: The current time.
+/// - `cancel`: Set when the user cancels.
 /// - `log`: Receives every progress message, as one line.
 pub fn run(
     config: &Config,
@@ -45,9 +48,17 @@ pub fn run(
     output: Option<&Path>,
     top: usize,
     now: Timestamp,
+    cancel: &AtomicBool,
     log: &mut impl FnMut(&str),
 ) -> anyhow::Result<Outcome> {
-    let failed = if offline { 0 } else { fetch_all(config, log) };
+    let failed = if offline {
+        0
+    } else {
+        fetch_all(config, cancel, log)?
+    };
+    if cancel.load(Ordering::Relaxed) {
+        return Err(Cancelled.into());
+    }
     let index = index(config, now, log)?;
     let report_dir = output
         .map_or_else(|| config.data_dir.join("report"), Path::to_path_buf);
@@ -69,8 +80,14 @@ pub fn run(
 /// # Arguments
 ///
 /// - `config`: The config.
+/// - `cancel`: Set when the user cancels. Then the fetch fails with
+///   [`Cancelled`].
 /// - `log`: Receives every progress message.
-fn fetch_all(config: &Config, log: &mut impl FnMut(&str)) -> usize {
+fn fetch_all(
+    config: &Config,
+    cancel: &AtomicBool,
+    log: &mut impl FnMut(&str),
+) -> anyhow::Result<usize> {
     let mut failed = 0;
     for source in &config.sources {
         let name = &source.name;
@@ -79,11 +96,12 @@ fn fetch_all(config: &Config, log: &mut impl FnMut(&str)) -> usize {
             source.host, source.port
         ));
         let progress = |message: &str| log(&format!("{name}: {message}"));
-        match fetch::fetch_source(source, &config.data_dir, progress) {
+        match fetch::fetch_source(source, &config.data_dir, cancel, progress) {
             Ok(summary) => log(&format!(
                 "{name}: done, {} emails in {} folders, {} new",
                 summary.emails, summary.folders, summary.fetched
             )),
+            Err(error) if error.is::<Cancelled>() => return Err(error),
             Err(error) => {
                 log(&format!("{name}: error: {error:#}"));
                 if let Some(hint) = hint(&error) {
@@ -93,7 +111,7 @@ fn fetch_all(config: &Config, log: &mut impl FnMut(&str)) -> usize {
             }
         }
     }
-    failed
+    Ok(failed)
 }
 
 /// Builds the index of all fetched emails, and writes it.
