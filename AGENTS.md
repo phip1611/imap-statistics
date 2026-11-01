@@ -26,7 +26,7 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --document-private-items --no-deps
-cargo +1.85.1 build --locked  # MSRV, also in Cargo.toml and CI
+cargo +1.88 build --locked    # MSRV, also in Cargo.toml and CI
 typos
 ```
 

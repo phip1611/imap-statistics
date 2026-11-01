@@ -37,6 +37,12 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    fetch the headers of new emails. A fetch can stop at any time, e.g.
    with Ctrl+C, and the next one continues where it stopped.
 
+4. Build the index of all fetched emails:
+
+   ```sh
+   imap-statistics index
+   ```
+
 `--config <path>` selects another config file.
 
 ### What is fetched
@@ -51,6 +57,27 @@ hold emails. If a server has a folder with all emails, as Gmail has with
 "All Mail", only that folder is fetched, so that an email with several
 labels counts once. Emails that were deleted on the server drop out with
 the next fetch.
+
+### The index
+
+`index` writes `index.json` to the data directory: one entry per email
+with its sources, year, sender, and category. Copies of an email in
+several folders or sources count once. The year is in UTC, from the
+`Date` header, or from the arrival on the server if `Date` is missing or
+implausible.
+
+The categories come from simple rules on the headers, never the content,
+so a few emails end up in the wrong category. The first matching rule
+wins:
+
+1. `social`: from a social network, e.g. `facebookmail.com`.
+2. `newsletter`: from a mailing list or newsletter (`List-Id`,
+   `List-Unsubscribe`, or `Precedence: bulk`).
+3. `shopping`: the subject is about an order, invoice, or delivery, in
+   English or German.
+4. `notification`: sent by a program (`Auto-Submitted`, or an address such
+   as `noreply@`).
+5. `personal`: everything else.
 
 ## License
 

@@ -5,9 +5,12 @@
 //! It exists so that every module can be built and tested on its own. It
 //! is no stable API for other crates.
 
+pub mod category;
 pub mod config;
+pub mod email;
 pub mod fetch;
 pub mod imap;
+pub mod index;
 pub mod store;
 #[cfg(test)]
 mod test_util;

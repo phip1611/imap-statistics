@@ -3,12 +3,15 @@
 //! CLI to generate statistics about the emails in IMAP accounts.
 
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::bail;
 use clap::{Parser, Subcommand};
 
 use imap_statistics::config::Config;
 use imap_statistics::fetch;
+use imap_statistics::index::{INDEX_FILE, Index};
+use imap_statistics::store;
 
 /// Fetches the headers of all emails from IMAP accounts and generates a
 /// Markdown report with statistics.
@@ -30,6 +33,9 @@ enum Command {
     /// Fetches the headers of all new emails of all sources into the data
     /// directory.
     Fetch,
+    /// Builds the index of all fetched emails, without connecting to the
+    /// sources.
+    Index,
 }
 
 /// Runs the command of the command line.
@@ -39,6 +45,7 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::CheckConfig => check_config(&config),
         Command::Fetch => fetch_all(&config)?,
+        Command::Index => index(&config)?,
     }
     Ok(())
 }
@@ -84,5 +91,34 @@ fn fetch_all(config: &Config) -> anyhow::Result<()> {
     if failed > 0 {
         bail!("{failed} of {} sources failed", config.sources.len());
     }
+    Ok(())
+}
+
+/// Builds the index of all fetched emails and writes it.
+///
+/// # Arguments
+///
+/// - `config`: The config.
+fn index(config: &Config) -> anyhow::Result<()> {
+    let mut sources = Vec::new();
+    for source in &config.sources {
+        let headers = store::load(&config.data_dir.join(&source.name))?;
+        if headers.is_empty() {
+            eprintln!("{}: no emails, run `fetch` first", source.name);
+        }
+        sources.push((source.name.clone(), headers));
+    }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let index = Index::build(&sources, i64::try_from(now)?);
+    let path = config.data_dir.join(INDEX_FILE);
+    index.write(&path)?;
+    let copies: usize = sources.iter().map(|(_, headers)| headers.len()).sum();
+    let undated = index.emails.iter().filter(|e| e.year.is_none()).count();
+    eprintln!(
+        "Indexed {} emails from {copies} copies, {undated} without date, \
+         into {}",
+        index.emails.len(),
+        path.display()
+    );
     Ok(())
 }
