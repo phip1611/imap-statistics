@@ -164,12 +164,6 @@ impl<S: Read + Write> Client<S> {
         })
     }
 
-    /// Returns the stream, for tests to check what the client sent.
-    #[cfg(test)]
-    pub(crate) fn stream(&self) -> &S {
-        self.stream.get_ref()
-    }
-
     /// Logs out, after which the server closes the connection.
     pub fn logout(mut self) -> anyhow::Result<()> {
         self.run("LOGOUT", |_| Ok(()))
@@ -248,7 +242,7 @@ fn quote(text: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{FakeServer, fake_client as client, sent};
+    use crate::test_util::{FakeServer, fake_client as client};
 
     /// Returns a folder.
     ///
@@ -265,26 +259,26 @@ mod tests {
 
     #[test]
     fn rejects_greeting_other_than_ok() {
-        let server = FakeServer::new(b"* BYE too busy\r\n");
+        let (server, _) = FakeServer::new(b"* BYE too busy\r\n");
         let error = Client::new(server).expect_err("greeting should fail");
         assert_eq!(error.to_string(), "unexpected greeting: * BYE too busy");
     }
 
     #[test]
     fn logs_in_with_quoted_credentials() {
-        let mut client = client(b"A1 OK LOGIN completed\r\n");
+        let (mut client, sent) = client(b"A1 OK LOGIN completed\r\n");
         client
             .login("me@example.com", r#"pa"ss\word"#)
             .expect("login should succeed");
         assert_eq!(
-            sent(&client),
+            sent.text(),
             "A1 LOGIN \"me@example.com\" \"pa\\\"ss\\\\word\"\r\n"
         );
     }
 
     #[test]
     fn reports_failed_login_without_the_password() {
-        let mut client =
+        let (mut client, _) =
             client(b"A1 NO [AUTHENTICATIONFAILED] Invalid credentials\r\n");
         let error = client
             .login("me@example.com", "secret")
@@ -301,25 +295,25 @@ mod tests {
 
     #[test]
     fn refuses_to_send_unsupported_credentials() {
-        let mut client = client(b"");
+        let (mut client, sent) = client(b"");
         for (username, password) in [("me", "pässword"), ("me\r\n", "x")] {
             client
                 .login(username, password)
                 .expect_err("login should fail");
         }
-        assert_eq!(sent(&client), "");
+        assert_eq!(sent.text(), "");
     }
 
     #[test]
     fn lists_folders() {
-        let mut client = client(
+        let (mut client, sent) = client(
             b"* LIST (\\HasNoChildren) \"/\" INBOX\r\n\
               * LIST (\\HasNoChildren \\Trash) \"/\" \"Deleted Items\"\r\n\
               * LIST (\\Noselect) NIL {4}\r\nWork\r\n\
               A1 OK LIST completed\r\n",
         );
         let folders = client.list().expect("LIST should succeed");
-        assert_eq!(sent(&client), "A1 LIST \"\" \"*\"\r\n");
+        assert_eq!(sent.text(), "A1 LIST \"\" \"*\"\r\n");
         assert_eq!(
             folders,
             [
@@ -332,7 +326,7 @@ mod tests {
 
     #[test]
     fn examines_folder() {
-        let mut client = client(
+        let (mut client, sent) = client(
             b"* FLAGS (\\Answered \\Seen)\r\n\
               * 172 EXISTS\r\n\
               * OK [UIDVALIDITY 3857529045] UIDs valid\r\n\
@@ -342,7 +336,7 @@ mod tests {
         let status = client
             .examine("Sent Items")
             .expect("EXAMINE should succeed");
-        assert_eq!(sent(&client), "A1 EXAMINE \"Sent Items\"\r\n");
+        assert_eq!(sent.text(), "A1 EXAMINE \"Sent Items\"\r\n");
         assert_eq!(
             status,
             FolderStatus {
@@ -354,18 +348,18 @@ mod tests {
 
     #[test]
     fn rejects_examine_without_uidvalidity() {
-        let mut client = client(b"* 1 EXISTS\r\nA1 OK done\r\n");
+        let (mut client, _) = client(b"* 1 EXISTS\r\nA1 OK done\r\n");
         let error = client.examine("INBOX").expect_err("EXAMINE should fail");
         assert_eq!(error.to_string(), "server sent no UIDVALIDITY");
     }
 
     #[test]
     fn searches_uids_in_ascending_order() {
-        let mut client = client(
+        let (mut client, sent) = client(
             b"* SEARCH 5 3\r\n* SEARCH 4 3\r\nA1 OK SEARCH completed\r\n",
         );
         let uids = client.search_uids().expect("SEARCH should succeed");
-        assert_eq!(sent(&client), "A1 UID SEARCH ALL\r\n");
+        assert_eq!(sent.text(), "A1 UID SEARCH ALL\r\n");
         assert_eq!(uids, [3, 4, 5]);
     }
 
@@ -373,7 +367,7 @@ mod tests {
     fn fetches_headers() {
         // The second email has its items in another order and flags, the
         // third response is an unsolicited flag update without a header.
-        let mut client = client(
+        let (mut client, sent) = client(
             b"* 1 FETCH (UID 7 INTERNALDATE \"17-Jul-1996 02:44:25 -0700\" \
               BODY[HEADER] {8}\r\nA: b\r\n\r\n)\r\n\
               * 2 FETCH (BODY[HEADER] \"C: d\" FLAGS (\\Seen (x)) UID 9)\r\n\
@@ -388,7 +382,7 @@ mod tests {
             })
             .expect("FETCH should succeed");
         assert_eq!(
-            sent(&client),
+            sent.text(),
             "A1 UID FETCH 7,9 (UID INTERNALDATE BODY.PEEK[HEADER])\r\n"
         );
         assert_eq!(
@@ -410,16 +404,16 @@ mod tests {
 
     #[test]
     fn fetches_nothing_without_uids() {
-        let mut client = client(b"");
+        let (mut client, sent) = client(b"");
         client
             .fetch_headers(&[], |_| panic!("no header expected"))
             .expect("FETCH should succeed");
-        assert_eq!(sent(&client), "");
+        assert_eq!(sent.text(), "");
     }
 
     #[test]
     fn rejects_bye_during_command() {
-        let mut client = client(b"* BYE shutting down\r\n");
+        let (mut client, _) = client(b"* BYE shutting down\r\n");
         let error = client.list().expect_err("LIST should fail");
         assert_eq!(
             error.to_string(),
@@ -429,15 +423,16 @@ mod tests {
 
     #[test]
     fn logs_out_with_bye() {
-        let client = client(b"* BYE logging out\r\nA1 OK LOGOUT done\r\n");
+        let (client, _sent) =
+            client(b"* BYE logging out\r\nA1 OK LOGOUT done\r\n");
         client.logout().expect("LOGOUT should succeed");
     }
 
     #[test]
     fn increments_tags() {
-        let mut client = client(b"A1 OK done\r\nA2 OK done\r\n");
+        let (mut client, sent) = client(b"A1 OK done\r\nA2 OK done\r\n");
         client.login("a", "b").expect("login should succeed");
         client.list().expect("LIST should succeed");
-        assert!(sent(&client).contains("\r\nA2 LIST"), "{}", sent(&client));
+        assert!(sent.text().contains("\r\nA2 LIST"), "{}", sent.text());
     }
 }

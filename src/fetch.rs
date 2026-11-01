@@ -135,7 +135,7 @@ fn fetch_folder<S: Read + Write>(
 mod tests {
     use super::*;
     use crate::store;
-    use crate::test_util::{TempDir, fake_client, sent};
+    use crate::test_util::{TempDir, fake_client};
 
     /// Returns a FETCH response with a header.
     ///
@@ -184,7 +184,7 @@ mod tests {
             "* 0 EXISTS\r\n* OK [UIDVALIDITY 1] x\r\nA5 OK\r\n".into(),
         ]
         .concat();
-        let mut client = fake_client(responses.as_bytes());
+        let (mut client, sent) = fake_client(responses.as_bytes());
         let mut messages = Vec::new();
 
         let summary =
@@ -193,7 +193,7 @@ mod tests {
 
         // The trash is skipped, and the empty folder is not searched.
         assert_eq!(
-            sent(&client),
+            sent.text(),
             "A1 LIST \"\" \"*\"\r\n\
              A2 EXAMINE \"INBOX\"\r\n\
              A3 UID SEARCH ALL\r\n\
@@ -234,7 +234,7 @@ mod tests {
             "A4 OK\r\n".into(),
         ]
         .concat();
-        let mut client = fake_client(first.as_bytes());
+        let (mut client, _) = fake_client(first.as_bytes());
         fetch(&mut client, &mut store, |_| {}).expect("fetch should succeed");
 
         // Email 1 was deleted on the server, email 3 is new.
@@ -246,16 +246,16 @@ mod tests {
             "A4 OK\r\n".into(),
         ]
         .concat();
-        let mut client = fake_client(second.as_bytes());
+        let (mut client, sent) = fake_client(second.as_bytes());
         let summary = fetch(&mut client, &mut store, |_| {})
             .expect("fetch should succeed");
 
         assert!(
-            sent(&client).ends_with(
+            sent.text().ends_with(
                 "A4 UID FETCH 3 (UID INTERNALDATE BODY.PEEK[HEADER])\r\n"
             ),
             "{}",
-            sent(&client)
+            sent.text()
         );
         assert_eq!(summary.fetched, 1);
         assert_eq!(
@@ -269,7 +269,7 @@ mod tests {
         let dir = TempDir::new("fetch-error");
         let mut store = Store::open(dir.path()).expect("store should open");
         let responses = b"* LIST () \"/\" INBOX\r\nA1 OK\r\nA2 NO gone\r\n";
-        let mut client = fake_client(responses);
+        let (mut client, _) = fake_client(responses);
         let error = fetch(&mut client, &mut store, |_| {})
             .expect_err("fetch should fail");
         assert_eq!(
