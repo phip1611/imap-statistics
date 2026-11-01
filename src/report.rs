@@ -274,7 +274,8 @@ fn count(value: u64, one: &str, many: &str) -> String {
 /// Renders a Markdown table with aligned columns, then an empty line.
 ///
 /// Cells are padded to the width of their column, so that the table is
-/// easy to read as text too.
+/// easy to read as text too. Every column has an explicit alignment, as
+/// some renderers, e.g. pandoc, center columns without one.
 ///
 /// # Arguments
 ///
@@ -318,7 +319,7 @@ fn table(
             if right.contains(&column) {
                 format!("{}:", "-".repeat(width - 1))
             } else {
-                "-".repeat(width)
+                format!(":{}", "-".repeat(width - 1))
             }
         })
         .collect();
@@ -420,7 +421,7 @@ mod tests {
             table(&["Name", "Count"], &[1], rows),
             [
                 "| Name | Count |",
-                "| ---- | ----: |",
+                "| :--- | ----: |",
                 "| a    |     1 |",
                 "| bbbb | 1,234 |",
                 "",

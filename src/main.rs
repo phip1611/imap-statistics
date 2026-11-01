@@ -12,6 +12,7 @@ use imap_statistics::config::Config;
 use imap_statistics::fetch;
 use imap_statistics::hint::hint;
 use imap_statistics::index::{INDEX_FILE, Index};
+use imap_statistics::pdf::{self, PDF_FILE};
 use imap_statistics::report::{self, REPORT_FILE};
 use imap_statistics::store;
 
@@ -156,5 +157,10 @@ fn report(
     let output = output.unwrap_or_else(|| config.data_dir.join("report"));
     report::write(&index, &output, top)?;
     eprintln!("Wrote {}", output.join(REPORT_FILE).display());
+    // The PDF is a convenience, so its errors are only warnings.
+    match pdf::convert(&output, REPORT_FILE) {
+        Ok(()) => eprintln!("Wrote {}", output.join(PDF_FILE).display()),
+        Err(error) => eprintln!("warning: {error:#}"),
+    }
     Ok(())
 }

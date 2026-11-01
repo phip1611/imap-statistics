@@ -7,7 +7,7 @@
 ![Emails per year](emails-per-year.svg)
 
 | Year | Emails |
-| ---- | -----: |
+| :--- | -----: |
 | 2012 |    279 |
 | 2013 |    308 |
 | 2014 |    313 |
@@ -30,7 +30,7 @@ Left out for lack of a usable date: 7 emails.
 ![Emails per category](emails-per-category.svg)
 
 | Category     | Emails | Share | Description                                  |
-| ------------ | -----: | ----: | -------------------------------------------- |
+| :----------- | -----: | ----: | :------------------------------------------- |
 | personal     |  1,915 |   34% | everything else, mostly from people          |
 | newsletter   |  1,539 |   27% | a newsletter, mailing list, or advertisement |
 | notification |  1,050 |   18% | sent by a program, e.g. a security code      |
@@ -46,7 +46,7 @@ The categories come from simple rules on the headers, so a few emails are in the
 10 sender addresses. The top 10 sent 100% of all emails. The name is the one that the sender used most often.
 
 |   # | Sender                        | Name          | Emails |
-| --: | ----------------------------- | ------------- | -----: |
+| --: | :---------------------------- | :------------ | -----: |
 |   1 | noreply@ci.example.com        | Example CI    |  1,050 |
 |   2 | ben.miller@example.com        | Ben Miller    |    895 |
 |   3 | news@shop.example.com         | Example Shop  |    892 |
