@@ -19,6 +19,7 @@ authors = [
 ]
 
 [dependencies]
+anyhow = { version = "1.0", default-features = false, features = ["std"] }
 clap = { version = "4.6", default-features = false, features = [
   "color",
   "derive",
@@ -29,6 +30,15 @@ clap = { version = "4.6", default-features = false, features = [
   "unicode",
   "usage",
   "wrap_help",
+] }
+serde = { version = "1.0", default-features = false, features = [
+  "derive",
+  "std",
+] }
+toml = { version = "1.1", default-features = false, features = [
+  "parse",
+  "serde",
+  "std",
 ] }
 
 [lints.rust]
