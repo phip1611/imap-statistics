@@ -25,6 +25,8 @@ pub struct Email {
     pub message_id: Option<String>,
     /// The first address of `From`.
     pub sender: Option<Sender>,
+    /// The addresses of `To`, `Cc`, and `Bcc`, in lowercase, each once.
+    pub recipients: Vec<String>,
     /// `Date` as Unix timestamp.
     pub date: Option<i64>,
     pub subject: String,
@@ -60,6 +62,7 @@ impl Email {
                 id.trim_start_matches('<').trim_end_matches('>').to_owned()
             }),
             sender: headers.get_first_header("From").and_then(sender),
+            recipients: recipients(&headers),
             date: value("Date").and_then(|date| parse_date(&date)),
             subject: value("Subject").unwrap_or_default(),
             list: value("List-Id").is_some()
@@ -92,6 +95,39 @@ fn sender(header: &MailHeader<'_>) -> Option<Sender> {
             .map(|name| name.trim().to_owned())
             .filter(|name| !name.is_empty()),
     })
+}
+
+/// Returns the addresses of `To`, `Cc`, and `Bcc`, in lowercase, each once.
+///
+/// Members of groups, e.g. `team: a@example.com, b@example.com;`, count as
+/// recipients too. Addresses that do not parse are skipped.
+///
+/// # Arguments
+///
+/// - `headers`: All headers of the email.
+fn recipients(headers: &[MailHeader<'_>]) -> Vec<String> {
+    let mut recipients: Vec<String> = Vec::new();
+    let headers = ["To", "Cc", "Bcc"]
+        .into_iter()
+        .flat_map(|key| headers.get_all_headers(key));
+    for header in headers {
+        let Ok(addresses) = addrparse_header(header) else {
+            continue;
+        };
+        for address in addresses.into_inner() {
+            let singles = match address {
+                MailAddr::Single(single) => vec![single],
+                MailAddr::Group(group) => group.addrs,
+            };
+            for single in singles {
+                let address = single.addr.trim().to_lowercase();
+                if !address.is_empty() && !recipients.contains(&address) {
+                    recipients.push(address);
+                }
+            }
+        }
+    }
+    recipients
 }
 
 /// Parses a date as in RFC 5322 into a Unix timestamp.
@@ -154,6 +190,7 @@ mod tests {
                     name: Some("Doe, Jane".into()),
                 }),
                 date: Some(NEW_YEAR),
+                recipients: vec!["me@example.org".into()],
                 subject: "Hello".into(),
                 ..Email::default()
             }
@@ -179,6 +216,28 @@ mod tests {
         assert_eq!(
             email.sender.map(|s| s.address).as_deref(),
             Some("a@example.com")
+        );
+    }
+
+    #[test]
+    fn collects_the_recipients_of_to_cc_and_bcc() {
+        let email = parse(
+            "To: Jane <Jane@Example.com>, team: b@example.com,\r\n \
+             c@example.com;\r\n\
+             Cc: jane@example.com, d@example.com\r\n\
+             Cc: e@example.com\r\n\
+             Bcc: f@example.com\r\n\r\n",
+        );
+        assert_eq!(
+            email.recipients,
+            [
+                "jane@example.com",
+                "b@example.com",
+                "c@example.com",
+                "d@example.com",
+                "e@example.com",
+                "f@example.com",
+            ]
         );
     }
 
