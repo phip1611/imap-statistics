@@ -12,6 +12,7 @@ use std::path::Path;
 use anyhow::Context;
 
 use crate::category::Category;
+use crate::config::Source;
 use crate::index::Index;
 use crate::svg::{self, number};
 
@@ -30,12 +31,18 @@ const MAX_WIDTH: usize = 80;
 /// # Arguments
 ///
 /// - `index`: The index of all emails.
+/// - `sources`: The email accounts of the config.
 /// - `dir`: The directory, which is created if needed.
 /// - `top`: The number of senders in the list of top senders.
-pub fn write(index: &Index, dir: &Path, top: usize) -> anyhow::Result<()> {
+pub fn write(
+    index: &Index,
+    sources: &[Source],
+    dir: &Path,
+    top: usize,
+) -> anyhow::Result<()> {
     fs::create_dir_all(dir)
         .with_context(|| format!("failed to create {}", dir.display()))?;
-    let report = render(index, top);
+    let report = render(index, sources, top);
     for (file, content) in report.files {
         let path = dir.join(file);
         fs::write(&path, content)
@@ -55,8 +62,9 @@ struct Report {
 /// # Arguments
 ///
 /// - `index`: The index of all emails.
+/// - `sources`: The email accounts of the config.
 /// - `top`: The number of senders in the list of top senders.
-fn render(index: &Index, top: usize) -> Report {
+fn render(index: &Index, sources: &[Source], top: usize) -> Report {
     let total = index.emails.len();
     let mut markdown = vec!["# Email statistics".to_owned(), String::new()];
     markdown.extend(paragraph(&format!(
@@ -65,6 +73,7 @@ fn render(index: &Index, top: usize) -> Report {
         count(total as u64, "email", "emails"),
         env!("CARGO_PKG_VERSION")
     )));
+    markdown.extend(accounts(index, sources));
     let mut files = Vec::new();
     for (section, chart) in
         [years(index), categories(index), senders(index, top)]
@@ -74,6 +83,38 @@ fn render(index: &Index, top: usize) -> Report {
     }
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
+}
+
+/// Returns the section with the email accounts and their emails.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+/// - `sources`: The email accounts of the config.
+fn accounts(index: &Index, sources: &[Source]) -> Vec<String> {
+    let mut lines = vec!["## Accounts".to_owned(), String::new()];
+    lines.extend(table(
+        &["Account", "Address", "Server", "Emails"],
+        &[3],
+        sources.iter().map(|source| {
+            let emails = index
+                .emails
+                .iter()
+                .filter(|email| email.sources.contains(&source.name))
+                .count();
+            vec![
+                escape(&source.name),
+                escape(&source.username),
+                escape(&format!("{}:{}", source.host, source.port)),
+                number(emails as u64),
+            ]
+        }),
+    ));
+    lines.extend(paragraph(
+        "An email in several accounts counts once in the other sections, \
+         but for each account here.",
+    ));
+    lines
 }
 
 /// Returns the section with the emails per year, and its chart.
@@ -479,11 +520,52 @@ mod tests {
                 )
             })
             .collect();
-        let report = render(&Index { emails }, 50);
+        let report = render(&Index { emails }, &[], 50);
         let markdown = file(&report, REPORT_FILE);
         for line in markdown.lines().filter(|line| !line.starts_with('|')) {
             assert!(line.chars().count() <= MAX_WIDTH, "{line}");
         }
+    }
+
+    /// Returns an email account.
+    ///
+    /// # Arguments
+    ///
+    /// - `name`: The name of the account.
+    fn source(name: &str) -> Source {
+        toml::from_str(&format!(
+            r#"
+            name = "{name}"
+            host = "imap.example.com"
+            username = "{name}@example.com"
+            password = "secret"
+            "#
+        ))
+        .expect("source should parse")
+    }
+
+    #[test]
+    fn lists_the_accounts_with_their_emails() {
+        let mut both = entry(Some(2024), "a@example.com", Category::Personal);
+        both.sources.push("home".into());
+        let index = Index {
+            emails: vec![
+                entry(Some(2024), "a@example.com", Category::Personal),
+                both,
+            ],
+        };
+        let sources = [source("work"), source("home"), source("old")];
+        let report = render(&index, &sources, 50);
+        let markdown = file(&report, REPORT_FILE);
+        assert_eq!(
+            rows(markdown, "Account"),
+            [
+                ["work", "work@example.com", "imap.example.com:993", "2"],
+                ["home", "home@example.com", "imap.example.com:993", "1"],
+                ["old", "old@example.com", "imap.example.com:993", "0"],
+            ]
+        );
+        assert!(!markdown.contains("secret"), "{markdown}");
     }
 
     #[test]
@@ -496,7 +578,7 @@ mod tests {
                 entry(None, "a@example.com", Category::Personal),
             ],
         };
-        let report = render(&index, 50);
+        let report = render(&index, &[], 50);
         let markdown = file(&report, REPORT_FILE);
         assert!(
             markdown.contains("4 emails, each counted once"),
@@ -523,7 +605,7 @@ mod tests {
                 entry(Some(2024), "s@example.com", Category::Social),
             ],
         };
-        let report = render(&index, 50);
+        let report = render(&index, &[], 50);
         let markdown = file(&report, REPORT_FILE);
         assert_eq!(
             rows(markdown, "Category"),
@@ -579,7 +661,7 @@ mod tests {
         emails.push(anonymous);
         let index = Index { emails };
 
-        let report = render(&index, 2);
+        let report = render(&index, &[], 2);
 
         let markdown = file(&report, REPORT_FILE);
         assert!(
@@ -618,9 +700,9 @@ mod tests {
                 Category::Personal,
             )],
         };
-        write(&index, &dir.path().join("report"), 50)
+        write(&index, &[], &dir.path().join("report"), 50)
             .expect("report should be written");
-        for (name, _) in render(&index, 50).files {
+        for (name, _) in render(&index, &[], 50).files {
             assert!(dir.path().join("report").join(name).is_file(), "{name}");
         }
     }

@@ -155,7 +155,7 @@ fn report(
     let index = Index::read(&config.data_dir.join(INDEX_FILE))
         .context("no index, run `index` first")?;
     let output = output.unwrap_or_else(|| config.data_dir.join("report"));
-    report::write(&index, &output, top)?;
+    report::write(&index, &config.sources, &output, top)?;
     eprintln!("Wrote {}", output.join(REPORT_FILE).display());
     // The PDF is a convenience, so its errors are only warnings.
     match pdf::convert(&output, REPORT_FILE) {
