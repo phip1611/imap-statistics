@@ -5,12 +5,13 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 
 use imap_statistics::config::Config;
 use imap_statistics::fetch;
 use imap_statistics::index::{INDEX_FILE, Index};
+use imap_statistics::report::{self, REPORT_FILE};
 use imap_statistics::store;
 
 /// Fetches the headers of all emails from IMAP accounts and generates a
@@ -36,6 +37,16 @@ enum Command {
     /// Builds the index of all fetched emails, without connecting to the
     /// sources.
     Index,
+    /// Generates the Markdown report with charts from the index.
+    Report {
+        /// Directory for the report [default: "report" in the data
+        /// directory].
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Number of senders in the list of top senders.
+        #[arg(long, default_value_t = 50)]
+        top: usize,
+    },
 }
 
 /// Runs the command of the command line.
@@ -46,6 +57,7 @@ fn main() -> anyhow::Result<()> {
         Command::CheckConfig => check_config(&config),
         Command::Fetch => fetch_all(&config)?,
         Command::Index => index(&config)?,
+        Command::Report { output, top } => report(&config, output, top)?,
     }
     Ok(())
 }
@@ -120,5 +132,25 @@ fn index(config: &Config) -> anyhow::Result<()> {
         index.emails.len(),
         path.display()
     );
+    Ok(())
+}
+
+/// Generates the report from the index.
+///
+/// # Arguments
+///
+/// - `config`: The config.
+/// - `output`: The directory for the report, or `None` for the default.
+/// - `top`: The number of senders in the list of top senders.
+fn report(
+    config: &Config,
+    output: Option<PathBuf>,
+    top: usize,
+) -> anyhow::Result<()> {
+    let index = Index::read(&config.data_dir.join(INDEX_FILE))
+        .context("no index, run `index` first")?;
+    let output = output.unwrap_or_else(|| config.data_dir.join("report"));
+    report::write(&index, &output, top)?;
+    eprintln!("Wrote {}", output.join(REPORT_FILE).display());
     Ok(())
 }

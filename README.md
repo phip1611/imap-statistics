@@ -4,8 +4,6 @@ CLI to fetch the headers of all emails from IMAP accounts and generate a
 Markdown report with statistics: emails per year, per category, and per
 sender.
 
-> **Status:** under development, nothing usable yet.
-
 The tool only reads from the IMAP servers and never changes a mailbox,
 not even the "seen" flag of a message. It runs on Linux, macOS, and
 Windows.
@@ -42,6 +40,16 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    ```sh
    imap-statistics index
    ```
+
+5. Generate the report:
+
+   ```sh
+   imap-statistics report
+   ```
+
+   It is written to `report/report.md` in the data directory, with SVG
+   charts next to it. `--output <dir>` writes it elsewhere, and `--top <n>`
+   sets the number of senders in the list of top senders (default: 50).
 
 `--config <path>` selects another config file.
 
