@@ -11,15 +11,18 @@
 //!
 //! The submodules read the responses of the server ([`response`]), parse
 //! them (`parse`), send the commands (`client`), guard them
-//! (`read_only`), and choose the folders (`folders`).
+//! (`read_only`), choose the folders (`folders`), and connect over TLS
+//! (`connection`).
 
 mod client;
+mod connection;
 mod folders;
 mod parse;
 mod read_only;
 pub mod response;
 
 pub use client::Client;
+pub use connection::{TlsStream, connect};
 pub use folders::select_folders;
 pub use read_only::check_read_only;
 
