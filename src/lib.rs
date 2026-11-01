@@ -12,6 +12,7 @@ pub mod fetch;
 pub mod hint;
 pub mod imap;
 pub mod index;
+pub mod pdf;
 pub mod report;
 pub mod store;
 pub mod svg;
