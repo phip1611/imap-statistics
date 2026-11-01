@@ -41,7 +41,8 @@ const CHART_SENDERS: usize = 20;
 /// - `sources`: The email accounts of the config.
 /// - `generated`: The time of the report.
 /// - `dir`: The directory, which is created if needed.
-/// - `top`: The number of senders in the list of top senders.
+/// - `top`: The number of senders and recipients in each list of top
+///   ones.
 pub fn write(
     index: &Index,
     sources: &[Source],
@@ -73,7 +74,8 @@ struct Report {
 /// - `index`: The index of all emails.
 /// - `sources`: The email accounts of the config.
 /// - `generated`: The time of the report.
-/// - `top`: The number of senders in the list of top senders.
+/// - `top`: The number of senders and recipients in each list of top
+///   ones.
 fn render(
     index: &Index,
     sources: &[Source],
@@ -105,15 +107,29 @@ fn render(
     ));
     markdown.extend(accounts(index, sources));
     let mut files = Vec::new();
-    for (section, chart) in [
-        years(index, &per_year),
-        categories(&per_category),
-        top_senders(index, &senders, top),
-        top_recipients(&recipients, top),
-    ] {
-        markdown.extend(section);
+    // Keeps the chart of a section and returns its lines.
+    let mut charted = |(lines, chart): (Vec<String>, _)| {
         files.push(chart);
-    }
+        lines
+    };
+    markdown.extend(charted(years(index, &per_year)));
+    markdown.extend(charted(categories(&per_category)));
+    markdown.extend(charted(top_senders(index, &senders, top)));
+    markdown.extend(top_per_year(
+        "Top senders per year",
+        "Sender",
+        &senders,
+        top,
+        true,
+    ));
+    markdown.extend(charted(top_recipients(&recipients, top)));
+    markdown.extend(top_per_year(
+        "Top recipients per year",
+        "Recipient",
+        &recipients,
+        top,
+        false,
+    ));
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
 }
@@ -393,10 +409,10 @@ fn top_senders(
             count(without, "email", "emails")
         )));
     }
-    let title = format!("Top {} senders", shown.len().min(CHART_SENDERS));
+    let title = format!("Top {} senders", senders.len().min(CHART_SENDERS));
     (
         lines,
-        (SENDERS_CHART, svg::bars(&title, &chart_data(shown))),
+        (SENDERS_CHART, svg::bars(&title, &chart_data(senders))),
     )
 }
 
@@ -441,11 +457,62 @@ fn top_recipients(
                 ]
             }),
     ));
-    let title = format!("Top {} recipients", shown.len().min(CHART_SENDERS));
+    let title =
+        format!("Top {} recipients", recipients.len().min(CHART_SENDERS));
     (
         lines,
-        (RECIPIENTS_CHART, svg::bars(&title, &chart_data(shown))),
+        (RECIPIENTS_CHART, svg::bars(&title, &chart_data(recipients))),
     )
+}
+
+/// Returns a section with the top contacts of each year, the newest first.
+///
+/// # Arguments
+///
+/// - `title`: The title of the section.
+/// - `column`: The title of the column with the addresses.
+/// - `contacts`: The contacts, the most emails first.
+/// - `top`: The number of contacts per year.
+/// - `names`: Whether to show the names of the contacts.
+fn top_per_year(
+    title: &str,
+    column: &str,
+    contacts: &[(&str, Contact)],
+    top: usize,
+    names: bool,
+) -> Vec<String> {
+    let mut header = vec!["Year", column];
+    if names {
+        header.push("Name");
+    }
+    header.push("Emails");
+    let mut rows = Vec::new();
+    for (year, ranked) in contacts::per_year(contacts).iter().rev() {
+        for (rank, (address, contact, emails)) in
+            ranked.iter().take(top).enumerate()
+        {
+            // The year only in its first row, so that the years stand out.
+            let year = if rank == 0 {
+                year.to_string()
+            } else {
+                String::new()
+            };
+            let mut row = vec![year, escape(address)];
+            if names {
+                row.push(escape(contact.name()));
+            }
+            row.push(number(*emails));
+            rows.push(row);
+        }
+    }
+    let mut lines = vec![format!("## {title}"), String::new()];
+    lines.extend(paragraph(&format!(
+        "The top {} of each year, the newest year first, with their emails \
+         in that year.",
+        number(top as u64)
+    )));
+    lines.extend(table(&header, &[header.len() - 1], rows));
+    lines
 }
 
 /// Returns the data of a chart of the first contacts.
@@ -777,7 +844,53 @@ mod tests {
             "{markdown}"
         );
         let chart = file(&report, SENDERS_CHART);
-        assert!(chart.contains("<title>Top 2 senders</title>"), "{chart}");
+        // The chart has more senders than the table.
+        assert!(chart.contains("<title>Top 3 senders</title>"), "{chart}");
+    }
+
+    /// Each year ranks the senders by their emails in that year, not in
+    /// total, and shows only the top ones. Emails without a year count in
+    /// no year.
+    #[test]
+    fn ranks_the_top_senders_per_year() {
+        // Boring setup: a has the most emails in total, 3 in 2023 and 1 in
+        // 2024. b has 2 in 2024, and c has 1 in 2024 and 1 without a year.
+        let emails = [
+            (Some(2023), "a"),
+            (Some(2023), "a"),
+            (Some(2023), "a"),
+            (Some(2024), "a"),
+            (Some(2024), "b"),
+            (Some(2024), "b"),
+            (Some(2024), "c"),
+            (None, "c"),
+        ];
+        let emails = emails
+            .iter()
+            .map(|&(year, sender)| {
+                entry(
+                    year,
+                    &format!("{sender}@example.com"),
+                    Category::Personal,
+                )
+            })
+            .collect();
+
+        let report = render(&Index { emails }, &[], GENERATED, 2);
+
+        let markdown = file(&report, REPORT_FILE);
+        let section = &markdown[markdown
+            .find("## Top senders per year")
+            .expect("report should have the section")..];
+        assert_eq!(
+            rows(section, "Year"),
+            [
+                // c ties with a in 2024, and is not in the top 2.
+                ["2024", "b@example.com", "", "2"],
+                ["", "a@example.com", "", "1"],
+                ["2023", "a@example.com", "", "3"],
+            ]
+        );
     }
 
     /// Only recipients of sent emails count, once per email, and never an own

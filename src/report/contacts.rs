@@ -6,18 +6,32 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
 
-use crate::index::Index;
+use crate::index::{Entry, Index};
 
 /// What the report shows of a sender or recipient.
 #[derive(Debug, Default)]
 pub(super) struct Contact {
     pub(super) emails: u64,
+    /// The emails per year, without the emails that have no year.
+    pub(super) years: BTreeMap<i64, u64>,
     /// How often each display name was used. Empty for recipients, as the
     /// index has only the names of senders.
     names: BTreeMap<String, u64>,
 }
 
 impl Contact {
+    /// Counts an email of the contact.
+    ///
+    /// # Arguments
+    ///
+    /// - `email`: The email.
+    fn add(&mut self, email: &Entry) {
+        self.emails += 1;
+        if let Some(year) = email.year {
+            *self.years.entry(year).or_default() += 1;
+        }
+    }
+
     /// Returns the most used name, the first in alphabetical order on ties.
     pub(super) fn name(&self) -> &str {
         self.names
@@ -42,7 +56,7 @@ pub(super) fn senders(index: &Index) -> Vec<(&str, Contact)> {
             continue;
         };
         let sender = senders.entry(address).or_default();
-        sender.emails += 1;
+        sender.add(email);
         if let Some(name) = &email.sender_name {
             *sender.names.entry(name.clone()).or_default() += 1;
         }
@@ -65,10 +79,36 @@ pub(super) fn recipients<'a>(
     let mut recipients: BTreeMap<&str, Contact> = BTreeMap::new();
     for email in index.emails.iter().filter(|e| e.sent) {
         for address in email.recipients.iter().filter(|r| !own.contains(*r)) {
-            recipients.entry(address).or_default().emails += 1;
+            recipients.entry(address).or_default().add(email);
         }
     }
     rank(recipients)
+}
+
+/// Returns the contacts of each year with their emails in that year, the
+/// most emails first.
+///
+/// # Arguments
+///
+/// - `contacts`: The contacts.
+pub(super) fn per_year<'a>(
+    contacts: &'a [(&'a str, Contact)],
+) -> BTreeMap<i64, Vec<(&'a str, &'a Contact, u64)>> {
+    let mut years: BTreeMap<i64, Vec<_>> = BTreeMap::new();
+    for (address, contact) in contacts {
+        for (&year, &emails) in &contact.years {
+            years
+                .entry(year)
+                .or_default()
+                .push((*address, contact, emails));
+        }
+    }
+    for contacts in years.values_mut() {
+        // Ties by address, so that the order is stable.
+        contacts
+            .sort_by_key(|&(address, _, emails)| (Reverse(emails), address));
+    }
+    years
 }
 
 /// Sorts contacts by their number of emails, the most first.

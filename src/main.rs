@@ -47,8 +47,8 @@ enum Command {
         /// directory].
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Number of senders in the list of top senders.
-        #[arg(long, default_value_t = 50)]
+        /// Number of senders and recipients in each list of top ones.
+        #[arg(long, default_value_t = 5)]
         top: usize,
     },
 }
@@ -158,7 +158,8 @@ fn index(config: &Config) -> anyhow::Result<()> {
 ///
 /// - `config`: The config.
 /// - `output`: The directory for the report, or `None` for the default.
-/// - `top`: The number of senders in the list of top senders.
+/// - `top`: The number of senders and recipients in each list of top
+///   ones.
 fn report(
     config: &Config,
     output: Option<PathBuf>,
