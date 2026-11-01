@@ -10,6 +10,7 @@ pub mod config;
 pub mod email;
 pub mod fetch;
 pub mod imap;
+pub mod index;
 pub mod store;
 #[cfg(test)]
 mod test_util;
