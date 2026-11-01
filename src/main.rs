@@ -198,18 +198,25 @@ fn report(
     Ok(())
 }
 
+/// The variable that overrides the current time, in seconds since 1970.
+///
+/// It is not `SOURCE_DATE_EPOCH`, which build environments set to the time
+/// of a build, e.g. `nix develop` to 1980-01-01. As "now", that time would
+/// make every later date implausible.
+const NOW_VARIABLE: &str = "IMAP_STATISTICS_NOW";
+
 /// Returns the current time.
 ///
-/// `SOURCE_DATE_EPOCH` overrides it, as reproducible builds do, so that the
-/// demo report is the same every time.
+/// [`NOW_VARIABLE`] overrides it, so that the demo report is the same every
+/// time.
 fn now() -> anyhow::Result<Timestamp> {
-    let Ok(epoch) = env::var("SOURCE_DATE_EPOCH") else {
+    let Ok(seconds) = env::var(NOW_VARIABLE) else {
         return Ok(Timestamp::now());
     };
-    epoch
+    seconds
         .trim()
         .parse()
         .ok()
         .and_then(|seconds| Timestamp::from_second(seconds).ok())
-        .with_context(|| format!("invalid SOURCE_DATE_EPOCH {epoch:?}"))
+        .with_context(|| format!("invalid {NOW_VARIABLE} {seconds:?}"))
 }

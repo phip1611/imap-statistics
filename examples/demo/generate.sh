@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 # A fixed time of the report, 2026-01-01 00:00:00 UTC, so that the report
 # only changes when the code does.
-export SOURCE_DATE_EPOCH=1767225600
+export IMAP_STATISTICS_NOW=1767225600
 rm -rf examples/demo/data
 cargo run --locked --example demo_data -- examples/demo/data
 config=examples/demo/imap-statistics.toml
