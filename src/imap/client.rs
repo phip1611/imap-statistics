@@ -2,6 +2,8 @@
 
 //! Sends the read-only commands and collects their responses.
 
+use std::error;
+use std::fmt;
 use std::io::{BufReader, Read, Write};
 
 use anyhow::{Context, bail};
@@ -13,6 +15,28 @@ use crate::imap::parse::{
 use crate::imap::read_only::{FETCH_ITEMS, check_read_only, command_name};
 use crate::imap::response::{Token, read_response};
 use crate::imap::{FetchedHeader, Folder, FolderStatus};
+
+/// The server refused a command, e.g. a login with a wrong password.
+#[derive(Debug)]
+pub struct CommandFailed {
+    /// The name of the command, e.g. `LOGIN`.
+    pub command: String,
+    /// The status response of the server, without literals.
+    pub response: String,
+}
+
+impl fmt::Display for CommandFailed {
+    /// Writes the command and the response of the server.
+    ///
+    /// # Arguments
+    ///
+    /// - `f`: The formatter.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} failed: {}", self.command, self.response)
+    }
+}
+
+impl error::Error for CommandFailed {}
 
 /// An IMAP connection after the greeting of the server.
 #[derive(Debug)]
@@ -183,7 +207,11 @@ impl<S: Read + Write> Client<S> {
                     if is_status(&tokens[1..], "OK") {
                         return Ok(());
                     }
-                    bail!("{name} failed: {}", describe(&tokens[1..]));
+                    return Err(CommandFailed {
+                        command: name.to_owned(),
+                        response: describe(&tokens[1..]),
+                    }
+                    .into());
                 }
                 Some(Token::Atom(first)) if first == "*" => {
                     if name != "LOGOUT" && is_untagged(&tokens, "BYE") {
@@ -265,6 +293,10 @@ mod tests {
             format!("{error:#}"),
             "LOGIN failed: NO [AUTHENTICATIONFAILED] Invalid credentials"
         );
+        let failed = error
+            .downcast_ref::<CommandFailed>()
+            .expect("error should be a refused command");
+        assert_eq!(failed.command, "LOGIN");
     }
 
     #[test]

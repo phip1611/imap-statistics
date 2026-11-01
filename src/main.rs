@@ -10,6 +10,7 @@ use clap::{Parser, Subcommand};
 
 use imap_statistics::config::Config;
 use imap_statistics::fetch;
+use imap_statistics::hint::hint;
 use imap_statistics::index::{INDEX_FILE, Index};
 use imap_statistics::report::{self, REPORT_FILE};
 use imap_statistics::store;
@@ -96,6 +97,9 @@ fn fetch_all(config: &Config) -> anyhow::Result<()> {
             ),
             Err(error) => {
                 eprintln!("{name}: error: {error:#}");
+                if let Some(hint) = hint(&error) {
+                    eprintln!("{name}: hint: {hint}");
+                }
                 failed += 1;
             }
         }

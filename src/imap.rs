@@ -21,7 +21,7 @@ mod parse;
 mod read_only;
 pub mod response;
 
-pub use client::Client;
+pub use client::{Client, CommandFailed};
 pub use connection::{TlsStream, connect};
 pub use folders::select_folders;
 pub use read_only::check_read_only;
