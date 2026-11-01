@@ -14,9 +14,11 @@ use jiff::Timestamp;
 use crate::category::Category;
 use crate::config::Source;
 use crate::index::Index;
+use crate::report::contacts::Contact;
 use crate::report::markdown::{count, escape, paragraph, table};
 use crate::svg::{self, number};
 
+mod contacts;
 mod markdown;
 
 pub const REPORT_FILE: &str = "report.md";
@@ -79,6 +81,10 @@ fn render(
     top: usize,
 ) -> Report {
     let total = index.emails.len();
+    let own: HashSet<String> =
+        sources.iter().flat_map(Source::own_addresses).collect();
+    let senders = contacts::senders(index);
+    let recipients = contacts::recipients(index, &own);
     let mut markdown = vec!["# Email statistics".to_owned(), String::new()];
     markdown.extend(paragraph(&format!(
         "{}, each counted once, also if it is in several folders or \
@@ -93,8 +99,8 @@ fn render(
     for (section, chart) in [
         years(index),
         categories(index),
-        senders(index, top),
-        recipients(index, sources, top),
+        top_senders(index, &senders, top),
+        top_recipients(&recipients, top),
     ] {
         markdown.extend(section);
         files.push(chart);
@@ -241,43 +247,23 @@ fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
     (lines, (CATEGORIES_CHART, chart))
 }
 
-/// What the report shows of a sender.
-#[derive(Debug, Default)]
-struct Sender {
-    emails: u64,
-    /// How often each display name was used.
-    names: BTreeMap<String, u64>,
-}
-
 /// Returns the section with the top senders, and its chart.
 ///
 /// # Arguments
 ///
 /// - `index`: The index of all emails.
+/// - `senders`: The senders of received emails, the most emails first.
 /// - `top`: The number of senders in the table.
-fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
-    let mut senders: BTreeMap<&str, Sender> = BTreeMap::new();
-    // Sent emails are all from the owner.
-    let received: Vec<_> = index.emails.iter().filter(|e| !e.sent).collect();
-    for email in &received {
-        let Some(address) = &email.sender else {
-            continue;
-        };
-        let sender = senders.entry(address).or_default();
-        sender.emails += 1;
-        if let Some(name) = &email.sender_name {
-            *sender.names.entry(name.clone()).or_default() += 1;
-        }
-    }
-    let without =
-        received.len() as u64 - senders.values().map(|s| s.emails).sum::<u64>();
-    // The most emails first, ties by address, so that the order is stable.
-    let mut ranked: Vec<_> = senders.into_iter().collect();
-    ranked.sort_by_key(|(address, sender)| (Reverse(sender.emails), *address));
-    let shown = &ranked[..top.min(ranked.len())];
-    let total = received.len().max(1) as u64;
-    let share: u64 =
-        shown.iter().map(|(_, s)| s.emails).sum::<u64>() * 100 / total;
+fn top_senders(
+    index: &Index,
+    senders: &[(&str, Contact)],
+    top: usize,
+) -> (Vec<String>, (&'static str, String)) {
+    let received = index.emails.iter().filter(|e| !e.sent).count() as u64;
+    let without = received - senders.iter().map(|(_, s)| s.emails).sum::<u64>();
+    let shown = &senders[..top.min(senders.len())];
+    let share: u64 = shown.iter().map(|(_, s)| s.emails).sum::<u64>() * 100
+        / received.max(1);
 
     let mut lines = vec![
         "## Top senders".to_owned(),
@@ -288,7 +274,7 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
     lines.extend(paragraph(&format!(
         "{} in received emails. The top {} sent {share}% of all received \
          emails. The name is the one that the sender used most often.",
-        count(ranked.len() as u64, "sender address", "sender addresses"),
+        count(senders.len() as u64, "sender address", "sender addresses"),
         number(shown.len() as u64),
     )));
     lines.extend(table(
@@ -298,7 +284,7 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
             vec![
                 (rank + 1).to_string(),
                 escape(address),
-                escape(&most_used(&sender.names)),
+                escape(sender.name()),
                 number(sender.emails),
             ]
         }),
@@ -309,13 +295,11 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
             count(without, "email", "emails")
         )));
     }
-    let data: Vec<_> = shown
-        .iter()
-        .take(CHART_SENDERS)
-        .map(|(address, sender)| ((*address).to_owned(), sender.emails))
-        .collect();
-    let title = format!("Top {} senders", data.len());
-    (lines, (SENDERS_CHART, svg::bars(&title, &data)))
+    let title = format!("Top {} senders", shown.len().min(CHART_SENDERS));
+    (
+        lines,
+        (SENDERS_CHART, svg::bars(&title, &chart_data(shown))),
+    )
 }
 
 /// Returns the section with the top recipients of sent emails, and its
@@ -323,29 +307,13 @@ fn senders(index: &Index, top: usize) -> (Vec<String>, (&'static str, String)) {
 ///
 /// # Arguments
 ///
-/// - `index`: The index of all emails.
-/// - `sources`: The email accounts of the config, whose own addresses do
-///   not count as recipients.
+/// - `recipients`: The recipients of sent emails, the most emails first.
 /// - `top`: The number of recipients in the table.
-fn recipients(
-    index: &Index,
-    sources: &[Source],
+fn top_recipients(
+    recipients: &[(&str, Contact)],
     top: usize,
 ) -> (Vec<String>, (&'static str, String)) {
-    let own: HashSet<String> =
-        sources.iter().flat_map(Source::own_addresses).collect();
-    let mut recipients: BTreeMap<&str, u64> = BTreeMap::new();
-    let sent = index.emails.iter().filter(|e| e.sent);
-    for recipient in sent.flat_map(|e| &e.recipients) {
-        if !own.contains(recipient) {
-            *recipients.entry(recipient).or_default() += 1;
-        }
-    }
-    // The most emails first, ties by address, so that the order is stable.
-    let mut ranked: Vec<_> = recipients.into_iter().collect();
-    ranked.sort_by_key(|&(address, emails)| (Reverse(emails), address));
-    let shown = &ranked[..top.min(ranked.len())];
-
+    let shown = &recipients[..top.min(recipients.len())];
     let mut lines = vec![
         "## Top recipients".to_owned(),
         String::new(),
@@ -356,7 +324,7 @@ fn recipients(
         "{} in sent emails, from To, Cc, and Bcc. An email to several \
          recipients counts for each of them. Own addresses do not count.",
         count(
-            ranked.len() as u64,
+            recipients.len() as u64,
             "recipient address",
             "recipient addresses"
         ),
@@ -364,30 +332,35 @@ fn recipients(
     lines.extend(table(
         &["#", "Recipient", "Emails"],
         &[0, 2],
-        shown.iter().enumerate().map(|(rank, &(address, emails))| {
-            vec![(rank + 1).to_string(), escape(address), number(emails)]
-        }),
+        shown
+            .iter()
+            .enumerate()
+            .map(|(rank, (address, recipient))| {
+                vec![
+                    (rank + 1).to_string(),
+                    escape(address),
+                    number(recipient.emails),
+                ]
+            }),
     ));
-    let data: Vec<_> = shown
-        .iter()
-        .take(CHART_SENDERS)
-        .map(|&(address, emails)| (address.to_owned(), emails))
-        .collect();
-    let title = format!("Top {} recipients", data.len());
-    (lines, (RECIPIENTS_CHART, svg::bars(&title, &data)))
+    let title = format!("Top {} recipients", shown.len().min(CHART_SENDERS));
+    (
+        lines,
+        (RECIPIENTS_CHART, svg::bars(&title, &chart_data(shown))),
+    )
 }
 
-/// Returns the most used name, the first in alphabetical order on ties.
+/// Returns the data of a chart of the first contacts.
 ///
 /// # Arguments
 ///
-/// - `names`: How often each name was used.
-fn most_used(names: &BTreeMap<String, u64>) -> String {
-    names
+/// - `contacts`: The contacts, the most emails first.
+fn chart_data(contacts: &[(&str, Contact)]) -> Vec<(String, u64)> {
+    contacts
         .iter()
-        .max_by_key(|&(name, count)| (count, Reverse(name)))
-        .map(|(name, _)| name.clone())
-        .unwrap_or_default()
+        .take(CHART_SENDERS)
+        .map(|(address, contact)| ((*address).to_owned(), contact.emails))
+        .collect()
 }
 
 #[cfg(test)]
