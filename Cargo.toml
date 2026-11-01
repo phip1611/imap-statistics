@@ -31,8 +31,17 @@ clap = { version = "4.6", default-features = false, features = [
   "usage",
   "wrap_help",
 ] }
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "std",
+  "tls12",
+] }
+rustls-native-certs = "0.8"
 serde = { version = "1.0", default-features = false, features = [
   "derive",
+  "std",
+] }
+serde_json = { version = "1.0", default-features = false, features = [
   "std",
 ] }
 toml = { version = "1.1", default-features = false, features = [
