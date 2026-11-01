@@ -8,13 +8,16 @@ made-up emails.
 
 The tool only reads from the IMAP servers and never changes a mailbox,
 not even the "seen" flag of a message. It runs on Linux, macOS, and
-Windows.
+Windows. For people who do not use a terminal, an optional
+[window](#the-window) does the same.
 
 ## Install
 
 ```sh
 cargo install --locked --git https://github.com/phip1611/imap-statistics
 ```
+
+With `--features gui`, it also installs `imap-statistics-gui`, the window.
 
 ## Usage
 
@@ -58,6 +61,15 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    warning.
 
 `--config <path>` selects another config file.
+
+### The window
+
+`imap-statistics-gui` opens a window to enter the email accounts and to
+create the report with one button. It edits `imap-statistics.toml` in the
+current directory, or the config file of its first argument, and shows
+where the file is. Saving rewrites the file, so it asks first if the file
+has comments, e.g. from the example config. A run can be cancelled, and
+the next one continues where it stopped.
 
 ### What is fetched
 

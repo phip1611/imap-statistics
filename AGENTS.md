@@ -26,10 +26,11 @@ Run before every commit. Every commit of a series must pass them:
 
 ```sh
 cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --locked --document-private-items --no-deps
-cargo +1.95 build --locked    # MSRV, also in Cargo.toml and CI
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-features
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features \
+  --document-private-items --no-deps
+cargo +1.95 build --locked --all-features    # MSRV, also in Cargo.toml and CI
 typos
 ```
 

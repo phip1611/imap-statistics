@@ -9,6 +9,8 @@ pub mod category;
 pub mod config;
 pub mod email;
 pub mod fetch;
+#[cfg(feature = "gui")]
+pub mod gui;
 pub mod hint;
 pub mod imap;
 pub mod index;

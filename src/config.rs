@@ -113,7 +113,7 @@ impl Config {
     ///
     /// - `text`: The content of the config file.
     /// - `base`: The directory that relative paths are relative to.
-    fn parse(text: &str, base: &Path) -> anyhow::Result<Self> {
+    pub fn parse(text: &str, base: &Path) -> anyhow::Result<Self> {
         let mut config: Self = toml::from_str(text)?;
         config.validate()?;
         // An absolute data_dir replaces the base.

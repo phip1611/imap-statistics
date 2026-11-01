@@ -6,6 +6,9 @@
   source fails, the report still covers its emails of earlier runs, but
   the run fails at the end.
 - `check-config` checks the config file and lists its sources.
+- `imap-statistics-gui`, with the `gui` feature, is a window to enter the
+  accounts and to create the report, for people who do not use a
+  terminal. A run in the window can be cancelled.
 - The fetch gets the headers of all new emails of all sources.
   It reports every step, and the time left for large folders.
   For common errors, such as a rejected login, it shows how to fix them.

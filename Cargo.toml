@@ -8,6 +8,7 @@ sender.
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
+default-run = "imap-statistics"
 keywords = ["imap", "email", "statistics", "report", "cli"]
 categories = ["command-line-utilities", "email"]
 readme = "README.md"
@@ -58,6 +59,10 @@ toml = { version = "1.1", default-features = false, features = [
   "serde",
   "std",
 ] }
+
+[[bin]]
+name = "imap-statistics-gui"
+required-features = ["gui"]
 
 [features]
 # The window of imap-statistics-gui. Off by default, as it triples the
