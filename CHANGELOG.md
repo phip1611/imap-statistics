@@ -13,6 +13,7 @@
   key numbers, received and sent emails per account and per year, received
   emails per category, and the top senders and the top recipients of sent
   emails, in total and per year. Complete lists of all senders and
-  recipients help to find the emails to clean up.
+  recipients help to find the emails to clean up. They are also written as
+  CSV files, for spreadsheets.
   It states when it was generated, in UTC.
   If pandoc is installed, it also writes the report as PDF.

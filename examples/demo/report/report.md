@@ -234,7 +234,8 @@ The top 5 of each year, the newest year first, with their emails in that year.
 
 Every sender of received emails, the most emails first, e.g. to find the ones to
 clean up. The category is the most common one of the emails of the sender. First
-and Last are the years of the first and the last email.
+and Last are the years of the first and the last email. The list is also in
+[senders.csv](senders.csv), for spreadsheets.
 
 |   # | Sender                        | Name          | Category     | Emails | First | Last |
 | --: | :---------------------------- | :------------ | :----------- | -----: | ----: | ---: |
@@ -252,7 +253,8 @@ and Last are the years of the first and the last email.
 ## All recipients
 
 Every recipient of sent emails, the most emails first. First and Last are the
-years of the first and the last email.
+years of the first and the last email. The list is also in
+[recipients.csv](recipients.csv), for spreadsheets.
 
 |   # | Recipient                | Emails | First | Last |
 | --: | :----------------------- | -----: | ----: | ---: |

@@ -50,9 +50,9 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    ```
 
    It is written to `report/report.md` in the data directory, with SVG
-   charts next to it. `--output <dir>` writes it elsewhere, and `--top <n>`
-   sets the number of senders and recipients in each list of top ones
-   (default: 5).
+   charts and CSV files of all senders and recipients next to it.
+   `--output <dir>` writes it elsewhere, and `--top <n>` sets the number
+   of senders and recipients in each list of top ones (default: 5).
 
    The report states when it was generated, in UTC. If set,
    `SOURCE_DATE_EPOCH` (seconds since 1970) overrides that time, e.g. for

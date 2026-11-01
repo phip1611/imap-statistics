@@ -15,10 +15,12 @@ use crate::category::Category;
 use crate::config::Source;
 use crate::index::Index;
 use crate::report::contacts::Contact;
+use crate::report::csv::csv;
 use crate::report::markdown::{count, escape, list, paragraph, table};
 use crate::svg::{self, number};
 
 mod contacts;
+mod csv;
 mod markdown;
 
 pub const REPORT_FILE: &str = "report.md";
@@ -26,6 +28,8 @@ const YEARS_CHART: &str = "emails-per-year.svg";
 const CATEGORIES_CHART: &str = "emails-per-category.svg";
 const SENDERS_CHART: &str = "top-senders.svg";
 const RECIPIENTS_CHART: &str = "top-recipients.svg";
+const SENDERS_CSV: &str = "senders.csv";
+const RECIPIENTS_CSV: &str = "recipients.csv";
 /// Format of the time of the report: RFC 3339 in UTC, with a space
 /// instead of the `T`, which RFC 3339 allows for readability, so that
 /// people and programs can read it, e.g. `2026-11-01 13:45:07Z`.
@@ -132,6 +136,8 @@ fn render(
     ));
     markdown.extend(all_senders(&senders));
     markdown.extend(all_recipients(&recipients));
+    files.push((SENDERS_CSV, senders_csv(&senders)));
+    files.push((RECIPIENTS_CSV, recipients_csv(&recipients)));
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
 }
@@ -528,7 +534,8 @@ fn all_senders(senders: &[(&str, Contact)]) -> Vec<String> {
         "Every sender of received emails, the most emails first, e.g. to find \
          the ones to clean up. The category is the most common one of the \
          emails of the sender. First and Last are the years of the first and \
-         the last email.",
+         the last email. The list is also in [senders.csv](senders.csv), for \
+         spreadsheets.",
     ));
     lines.extend(table(
         &["#", "Sender", "Name", "Category", "Emails", "First", "Last"],
@@ -561,7 +568,8 @@ fn all_recipients(recipients: &[(&str, Contact)]) -> Vec<String> {
     let mut lines = vec!["## All recipients".to_owned(), String::new()];
     lines.extend(paragraph(
         "Every recipient of sent emails, the most emails first. First and \
-         Last are the years of the first and the last email.",
+         Last are the years of the first and the last email. The list is also \
+         in [recipients.csv](recipients.csv), for spreadsheets.",
     ));
     lines.extend(table(
         &["#", "Recipient", "Emails", "First", "Last"],
@@ -580,6 +588,48 @@ fn all_recipients(recipients: &[(&str, Contact)]) -> Vec<String> {
             }),
     ));
     lines
+}
+
+/// Returns the CSV file with all senders of received emails.
+///
+/// # Arguments
+///
+/// - `senders`: The senders of received emails, the most emails first.
+fn senders_csv(senders: &[(&str, Contact)]) -> String {
+    csv(
+        &["Sender", "Name", "Category", "Emails", "First", "Last"],
+        senders.iter().map(|(address, sender)| {
+            let mut row = vec![
+                (*address).to_owned(),
+                sender.name().to_owned(),
+                sender
+                    .category()
+                    .map(Category::name)
+                    .unwrap_or_default()
+                    .into(),
+                sender.emails.to_string(),
+            ];
+            row.extend(first_and_last(sender));
+            row
+        }),
+    )
+}
+
+/// Returns the CSV file with all recipients of sent emails.
+///
+/// # Arguments
+///
+/// - `recipients`: The recipients of sent emails, the most emails first.
+fn recipients_csv(recipients: &[(&str, Contact)]) -> String {
+    csv(
+        &["Recipient", "Emails", "First", "Last"],
+        recipients.iter().map(|(address, recipient)| {
+            let mut row =
+                vec![(*address).to_owned(), recipient.emails.to_string()];
+            row.extend(first_and_last(recipient));
+            row
+        }),
+    )
 }
 
 /// Returns the cells with the years of the first and the last email of a
@@ -999,6 +1049,12 @@ mod tests {
                 ["2", "b@example.com", "", "shopping", "1", "", ""],
             ]
         );
+        assert_eq!(
+            file(&report, SENDERS_CSV),
+            "Sender,Name,Category,Emails,First,Last\n\
+             a@example.com,,newsletter,3,2021,2024\n\
+             b@example.com,,shopping,1,,\n"
+        );
     }
 
     /// Only recipients of sent emails count, once per email, and never an own
@@ -1041,6 +1097,12 @@ mod tests {
                 ["1", "a@example.com", "2", "2024", "2024"],
                 ["2", "b@example.com", "1", "2024", "2024"]
             ]
+        );
+        assert_eq!(
+            file(&report, RECIPIENTS_CSV),
+            "Recipient,Emails,First,Last\n\
+             a@example.com,2,2024,2024\n\
+             b@example.com,1,2024,2024\n"
         );
     }
 
