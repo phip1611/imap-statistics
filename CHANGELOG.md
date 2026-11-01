@@ -9,8 +9,9 @@
   category, and whether they were received or sent. Emails from an own
   address (the username or `addresses` in the config) or in a Sent folder
   count as sent.
-- `report` generates a Markdown report with SVG charts: received and sent
-  emails per account and per year, received emails per category, the top
-  senders, and the top recipients of sent emails.
+- `report` generates a Markdown report with SVG charts: an overview of the
+  key numbers, received and sent emails per account and per year, received
+  emails per category, the top senders, and the top recipients of sent
+  emails.
   It states when it was generated, in UTC.
   If pandoc is installed, it also writes the report as PDF.

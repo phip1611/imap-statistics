@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Markdown of the report: paragraphs, tables, and the escaping of text.
+//! Markdown of the report: paragraphs, lists, tables, and the escaping of
+//! text.
 
 use std::mem;
 
@@ -24,29 +25,59 @@ pub(super) fn count(value: u64, one: &str, many: &str) -> String {
 
 /// Wraps text into lines of at most [`MAX_WIDTH`], then an empty line.
 ///
+/// # Arguments
+///
+/// - `text`: The text of the paragraph, in one line.
+pub(super) fn paragraph(text: &str) -> Vec<String> {
+    let mut lines = wrap(text, "", "");
+    lines.push(String::new());
+    lines
+}
+
+/// Renders a Markdown list, each item wrapped, then an empty line.
+///
+/// # Arguments
+///
+/// - `items`: The text of each item, in one line.
+pub(super) fn list<S: AsRef<str>>(items: &[S]) -> Vec<String> {
+    let mut lines: Vec<String> = items
+        .iter()
+        .flat_map(|item| wrap(item.as_ref(), "- ", "  "))
+        .collect();
+    lines.push(String::new());
+    lines
+}
+
+/// Wraps text into lines of at most [`MAX_WIDTH`], with a prefix each.
+///
 /// Lines break between words. A word longer than a line gets a line of its
 /// own.
 ///
 /// # Arguments
 ///
-/// - `text`: The text of the paragraph, in one line.
-pub(super) fn paragraph(text: &str) -> Vec<String> {
+/// - `text`: The text, in one line.
+/// - `first`: The prefix of the first line.
+/// - `rest`: The prefix of the other lines.
+fn wrap(text: &str, first: &str, rest: &str) -> Vec<String> {
     let mut lines = Vec::new();
-    let mut line = String::new();
+    let mut line = first.to_owned();
+    // Whether the line has no word yet, only its prefix.
+    let mut empty = true;
     for word in text.split_whitespace() {
         let width = line.chars().count() + 1 + word.chars().count();
-        if !line.is_empty() && width > MAX_WIDTH {
-            lines.push(mem::take(&mut line));
+        if !empty && width > MAX_WIDTH {
+            lines.push(mem::replace(&mut line, rest.to_owned()));
+            empty = true;
         }
-        if !line.is_empty() {
+        if !empty {
             line.push(' ');
         }
         line.push_str(word);
+        empty = false;
     }
-    if !line.is_empty() {
+    if !empty {
         lines.push(line);
     }
-    lines.push(String::new());
     lines
 }
 
@@ -161,6 +192,22 @@ mod tests {
         );
         let long = "x".repeat(90);
         assert_eq!(paragraph(&format!("a {long} b")), ["a", &long, "b", ""]);
+    }
+
+    /// The lines after the first of an item are indented, so that they
+    /// belong to the item.
+    #[test]
+    fn wraps_list_items_with_indent() {
+        let item = format!("{} {}", "a".repeat(70), "b".repeat(10));
+        assert_eq!(
+            list(&[item.as_str(), "c"]),
+            [
+                format!("- {}", "a".repeat(70)),
+                format!("  {}", "b".repeat(10)),
+                "- c".into(),
+                String::new()
+            ]
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@ use crate::category::Category;
 use crate::config::Source;
 use crate::index::Index;
 use crate::report::contacts::Contact;
-use crate::report::markdown::{count, escape, paragraph, table};
+use crate::report::markdown::{count, escape, list, paragraph, table};
 use crate::svg::{self, number};
 
 mod contacts;
@@ -85,6 +85,8 @@ fn render(
         sources.iter().flat_map(Source::own_addresses).collect();
     let senders = contacts::senders(index);
     let recipients = contacts::recipients(index, &own);
+    let per_year = count_years(index);
+    let per_category = count_categories(index);
     let mut markdown = vec!["# Email statistics".to_owned(), String::new()];
     markdown.extend(paragraph(&format!(
         "{}, each counted once, also if it is in several folders or \
@@ -94,11 +96,18 @@ fn render(
         env!("CARGO_PKG_REPOSITORY"),
         env!("CARGO_PKG_VERSION")
     )));
+    markdown.extend(overview(
+        index,
+        &per_year,
+        &per_category,
+        &senders,
+        &recipients,
+    ));
     markdown.extend(accounts(index, sources));
     let mut files = Vec::new();
     for (section, chart) in [
-        years(index),
-        categories(index),
+        years(index, &per_year),
+        categories(&per_category),
         top_senders(index, &senders, top),
         top_recipients(&recipients, top),
     ] {
@@ -107,6 +116,73 @@ fn render(
     }
     files.push((REPORT_FILE, markdown.join("\n")));
     Report { files }
+}
+
+/// Returns the section with the key numbers of the other sections.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+/// - `per_year`: The received and sent emails per year.
+/// - `per_category`: The received emails per category, the most first.
+/// - `senders`: The senders of received emails, the most emails first.
+/// - `recipients`: The recipients of sent emails, the most emails first.
+fn overview(
+    index: &Index,
+    per_year: &BTreeMap<i64, [u64; 2]>,
+    per_category: &[(Category, u64)],
+    senders: &[(&str, Contact)],
+    recipients: &[(&str, Contact)],
+) -> Vec<String> {
+    let mut items = Vec::new();
+    if let (Some(first), Some(last)) =
+        (per_year.keys().next(), per_year.keys().next_back())
+    {
+        items.push(format!("Period: {first} to {last}."));
+    }
+    let sent = index.emails.iter().filter(|e| e.sent).count() as u64;
+    items.push(format!(
+        "Emails: {} received and {} sent.",
+        number(index.emails.len() as u64 - sent),
+        number(sent)
+    ));
+    // The earliest year on ties.
+    let busiest = per_year
+        .iter()
+        .max_by_key(|&(year, counts)| (counts[0] + counts[1], Reverse(year)));
+    if let Some((year, [received, sent])) = busiest {
+        items.push(format!(
+            "Busiest year: {year}, with {}.",
+            count(received + sent, "email", "emails")
+        ));
+    }
+    let received: u64 = per_category.iter().map(|&(_, count)| count).sum();
+    if let Some(&(category, emails)) = per_category.first()
+        && emails > 0
+    {
+        items.push(format!(
+            "Largest category: {}, with {}% of the received emails.",
+            category.name(),
+            emails * 100 / received
+        ));
+    }
+    if let Some((address, sender)) = senders.first() {
+        items.push(format!(
+            "Top sender: {}, with {}.",
+            escape(address),
+            count(sender.emails, "email", "emails")
+        ));
+    }
+    if let Some((address, recipient)) = recipients.first() {
+        items.push(format!(
+            "Top recipient: {}, with {}.",
+            escape(address),
+            count(recipient.emails, "email", "emails")
+        ));
+    }
+    let mut lines = vec!["## Overview".to_owned(), String::new()];
+    lines.extend(list(&items));
+    lines
 }
 
 /// Returns the section with the email accounts and their emails.
@@ -148,19 +224,31 @@ fn accounts(index: &Index, sources: &[Source]) -> Vec<String> {
     lines
 }
 
-/// Returns the section with the emails per year, and its chart.
+/// Returns the received and sent emails per year.
 ///
 /// # Arguments
 ///
 /// - `index`: The index of all emails.
-fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
-    // Received and sent emails per year.
+fn count_years(index: &Index) -> BTreeMap<i64, [u64; 2]> {
     let mut counts: BTreeMap<i64, [u64; 2]> = BTreeMap::new();
     for email in &index.emails {
         if let Some(year) = email.year {
             counts.entry(year).or_default()[usize::from(email.sent)] += 1;
         }
     }
+    counts
+}
+
+/// Returns the section with the emails per year, and its chart.
+///
+/// # Arguments
+///
+/// - `index`: The index of all emails.
+/// - `counts`: The received and sent emails per year.
+fn years(
+    index: &Index,
+    counts: &BTreeMap<i64, [u64; 2]>,
+) -> (Vec<String>, (&'static str, String)) {
     // Every year from the first to the last, so that gaps show.
     let data: Vec<_> = match (counts.keys().next(), counts.keys().next_back()) {
         (Some(&first), Some(&last)) => (first..=last)
@@ -197,26 +285,36 @@ fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
     (lines, (YEARS_CHART, chart))
 }
 
-/// Returns the section with the emails per category, and its chart.
+/// Returns the received emails per category, the most first.
+///
+/// Sent emails are by the owner, so their category says little.
 ///
 /// # Arguments
 ///
 /// - `index`: The index of all emails.
-fn categories(index: &Index) -> (Vec<String>, (&'static str, String)) {
+fn count_categories(index: &Index) -> Vec<(Category, u64)> {
     let mut counts: BTreeMap<Category, u64> = Category::ALL
         .iter()
         .map(|&category| (category, 0))
         .collect();
-    // Sent emails are by the owner, so their category says little.
-    let received: Vec<_> = index.emails.iter().filter(|e| !e.sent).collect();
-    for email in &received {
+    for email in index.emails.iter().filter(|e| !e.sent) {
         *counts.entry(email.category).or_default() += 1;
     }
     let mut counts: Vec<_> = counts.into_iter().collect();
-    // The largest first. The sort is stable, so ties keep the order of
-    // the rules.
+    // The sort is stable, so ties keep the order of the rules.
     counts.sort_by_key(|&(_, count)| Reverse(count));
-    let total = received.len().max(1) as u64;
+    counts
+}
+
+/// Returns the section with the emails per category, and its chart.
+///
+/// # Arguments
+///
+/// - `counts`: The received emails per category, the most first.
+fn categories(
+    counts: &[(Category, u64)],
+) -> (Vec<String>, (&'static str, String)) {
+    let total = counts.iter().map(|&(_, count)| count).sum::<u64>().max(1);
     let mut lines = vec![
         "## Emails per category".to_owned(),
         String::new(),
@@ -498,6 +596,44 @@ mod tests {
             ]
         );
         assert!(!markdown.contains("secret"), "{markdown}");
+    }
+
+    /// The overview names the largest of each section. Ties go to the
+    /// earliest year, and the share of a category counts received emails
+    /// only.
+    #[test]
+    fn sums_up_the_key_numbers() {
+        // Boring setup: 2 received emails in 2021, 1 in 2023, and 1 sent
+        // email in 2023 to b.
+        let index = Index {
+            emails: vec![
+                entry(Some(2021), "a@example.com", Category::Newsletter),
+                entry(Some(2021), "a@example.com", Category::Newsletter),
+                entry(Some(2023), "c@example.com", Category::Personal),
+                Entry {
+                    sent: true,
+                    recipients: vec!["b@example.com".into()],
+                    ..entry(Some(2023), "work@example.com", Category::Personal)
+                },
+            ],
+        };
+
+        let report = render(&index, &[source("work")], GENERATED, 50);
+
+        let markdown = file(&report, REPORT_FILE);
+        assert!(
+            markdown.contains(
+                "## Overview\n\n\
+                 - Period: 2021 to 2023.\n\
+                 - Emails: 3 received and 1 sent.\n\
+                 - Busiest year: 2021, with 2 emails.\n\
+                 - Largest category: newsletter, with 66% of the received \
+                 emails.\n\
+                 - Top sender: a@example.com, with 2 emails.\n\
+                 - Top recipient: b@example.com, with 1 email.\n\n"
+            ),
+            "{markdown}"
+        );
     }
 
     /// Years without emails show as 0, so that gaps are visible. Emails without

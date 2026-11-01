@@ -4,6 +4,15 @@
 Generated on 2026-01-01 00:00:00Z by
 [imap-statistics](https://github.com/phip1611/imap-statistics) 0.1.0.
 
+## Overview
+
+- Period: 2012 to 2025.
+- Emails: 5,603 received and 1,152 sent.
+- Busiest year: 2024, with 603 emails.
+- Largest category: personal, with 34% of the received emails.
+- Top sender: noreply@ci.example.com, with 1,050 emails.
+- Top recipient: ben.miller@example.com, with 754 emails.
+
 ## Accounts
 
 | Account | Address        | Server               | Received | Sent |
