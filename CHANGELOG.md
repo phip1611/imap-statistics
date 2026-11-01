@@ -8,4 +8,5 @@
   and category.
 - `report` generates a Markdown report with SVG charts: emails per account,
   per year, per category, and the top senders.
+  It states when it was generated, in UTC.
   If pandoc is installed, it also writes the report as PDF.

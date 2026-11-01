@@ -52,6 +52,10 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    charts next to it. `--output <dir>` writes it elsewhere, and `--top <n>`
    sets the number of senders in the list of top senders (default: 50).
 
+   The report states when it was generated, in UTC. If set,
+   `SOURCE_DATE_EPOCH` (seconds since 1970) overrides that time, e.g. for
+   reproducible reports.
+
    If [pandoc](https://pandoc.org) is installed, `report` also converts the
    report into `report.pdf`. With [typst](https://typst.app) installed as
    well, pandoc uses it, otherwise pandoc's default, which needs LaTeX and
