@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 
@@ -38,10 +39,13 @@ pub struct Summary {
 pub fn fetch_source(
     source: &Source,
     data_dir: &Path,
-    progress: impl FnMut(&str),
+    mut progress: impl FnMut(&str),
 ) -> anyhow::Result<Summary> {
+    progress("reading the stored headers");
     let mut store = Store::open(&data_dir.join(&source.name))?;
+    progress("connecting");
     let mut client = imap::connect(&source.host, source.port)?;
+    progress("logging in");
     client.login(&source.username, source.password.expose())?;
     let summary = fetch(&mut client, &mut store, progress)?;
     client.logout()?;
@@ -63,7 +67,9 @@ pub fn fetch<S: Read + Write>(
     store: &mut Store,
     mut progress: impl FnMut(&str),
 ) -> anyhow::Result<Summary> {
+    progress("listing the folders");
     let folders = imap::select_folders(client.list()?);
+    progress(&format!("{} folders to fetch", folders.len()));
     let mut summary = Summary {
         folders: folders.len(),
         ..Summary::default()
@@ -110,18 +116,25 @@ fn fetch_folder<S: Read + Write>(
     let uids = if status.exists == 0 {
         Vec::new()
     } else {
+        // Takes a while for large folders, e.g. "All Mail" of Gmail.
+        progress(&format!("searching {} emails", status.exists));
         client.search_uids()?
     };
     let missing = store.missing(folder, status.uidvalidity, &uids);
     progress(&format!("{} emails, {} new", uids.len(), missing.len()));
     let mut fetched = 0;
+    let started = Instant::now();
     for batch in missing.chunks(BATCH) {
         client.fetch_headers(batch, |header| {
             fetched += 1;
             store.append(folder, status.uidvalidity, header)
         })?;
         if missing.len() > BATCH {
-            progress(&format!("fetched {fetched} of {}", missing.len()));
+            progress(&batch_progress(
+                started.elapsed(),
+                fetched,
+                missing.len(),
+            ));
         }
     }
     let state = FolderState {
@@ -129,6 +142,32 @@ fn fetch_folder<S: Read + Write>(
         uids,
     };
     Ok((state, fetched))
+}
+
+/// Describes the progress of a folder, e.g. `fetched 500 of 2000 (25%),
+/// about 3 min left`.
+///
+/// The time left assumes that the rest goes as fast as what was fetched.
+///
+/// # Arguments
+///
+/// - `elapsed`: The time since the first batch of the folder started.
+/// - `done`: The number of fetched headers.
+/// - `total`: The number of headers to fetch.
+fn batch_progress(elapsed: Duration, done: usize, total: usize) -> String {
+    let mut message =
+        format!("fetched {done} of {total} ({}%)", done * 100 / total.max(1));
+    if done > 0 && done < total {
+        let left = elapsed.as_secs_f64() * (total - done) as f64 / done as f64;
+        let seconds = left.round() as u64;
+        let left = match seconds {
+            0..60 => format!("{seconds} s"),
+            60..3600 => format!("{} min", seconds / 60),
+            _ => format!("{} h {} min", seconds / 3600, seconds % 3600 / 60),
+        };
+        message.push_str(&format!(", about {left} left"));
+    }
+    message
 }
 
 #[cfg(test)]
@@ -211,6 +250,9 @@ mod tests {
         assert_eq!(
             messages,
             [
+                "listing the folders",
+                "2 folders to fetch",
+                "folder 1 of 2: searching 2 emails",
                 "folder 1 of 2: 2 emails, 2 new",
                 "folder 2 of 2: 0 emails, 0 new"
             ]
@@ -262,6 +304,28 @@ mod tests {
             uids(dir.path()),
             [("INBOX".into(), 2), ("INBOX".into(), 3)]
         );
+    }
+
+    #[test]
+    fn estimates_the_time_left() {
+        let progress = |seconds, done, total| {
+            batch_progress(Duration::from_secs(seconds), done, total)
+        };
+        assert_eq!(
+            progress(10, 500, 2000),
+            "fetched 500 of 2000 (25%), about 30 s left"
+        );
+        assert_eq!(
+            progress(30, 500, 1500),
+            "fetched 500 of 1500 (33%), about 1 min left"
+        );
+        assert_eq!(
+            progress(60, 1000, 121_000),
+            "fetched 1000 of 121000 (0%), about 2 h 0 min left"
+        );
+        // Nothing to estimate yet, or nothing left.
+        assert_eq!(progress(5, 0, 1000), "fetched 0 of 1000 (0%)");
+        assert_eq!(progress(5, 1000, 1000), "fetched 1000 of 1000 (100%)");
     }
 
     #[test]
