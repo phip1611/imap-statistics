@@ -7,3 +7,6 @@
 
 pub mod config;
 pub mod imap;
+pub mod store;
+#[cfg(test)]
+mod test_util;
