@@ -13,8 +13,9 @@ use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
 use crate::imap::Client;
 
-/// Timeout to connect, per address of the server.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout to connect, per address of the server. A reachable server
+/// answers within a second, a wrong host or port does not answer at all.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Timeout per read or write, not per command. Generous, as servers may
 /// take a while to search large folders.
 const IO_TIMEOUT: Duration = Duration::from_secs(120);
