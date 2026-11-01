@@ -17,7 +17,7 @@ use anyhow::{Context, bail};
 /// The name of the PDF file next to the Markdown report.
 pub const PDF_FILE: &str = "report.pdf";
 /// Typst rules for the layout of the PDF.
-const TYPST_RULES: [&str; 11] = [
+const TYPST_RULES: [&str; 12] = [
     // pandoc puts each table into a figure, which typst keeps on one page,
     // so that long tables ran over the bottom of the page.
     "#show figure: set block(breakable: true)",
@@ -36,6 +36,16 @@ const TYPST_RULES: [&str; 11] = [
     "#show table: set text(size: 9pt, hyphenate: false, \
      number-width: \"tabular\")",
     "#show table: set par(justify: false)",
+    // Addresses may break after @ . _ + = -, and parts of more than 20
+    // characters anywhere, so that long addresses do not run into the next
+    // column. Boxes add no character to copied text, unlike a zero-width
+    // space.
+    concat!(
+        r#"#show table: it => { show regex("\S+@\S+"): m => m.text"#,
+        r#".matches(regex("[^@._+=-]*[@._+=-]?")).map(p => p.text)"#,
+        r#".filter(p => p != "").map(p => if p.clusters().len() > 20 "#,
+        r#"{ p.clusters().map(box).join() } else { box(p) }).join(); it }"#,
+    ),
     // Headings and links in the blue of the charts, and a line below each
     // section heading.
     "#show heading: set text(fill: rgb(\"#2a78d6\"))",
