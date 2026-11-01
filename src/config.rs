@@ -57,17 +57,27 @@ impl Password {
 }
 
 impl fmt::Debug for Password {
+    /// Writes a placeholder instead of the password.
+    ///
+    /// # Arguments
+    ///
+    /// - `f`: The formatter.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Password(<hidden>)")
     }
 }
 
+/// Returns the default port, for serde.
 const fn default_port() -> u16 {
     DEFAULT_PORT
 }
 
 impl Config {
-    /// Reads and validates the config file at `path`.
+    /// Reads and validates a config file.
+    ///
+    /// # Arguments
+    ///
+    /// - `path`: The path of the config file.
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let text = fs::read_to_string(path).with_context(|| {
             format!("failed to read config file {}", path.display())
@@ -77,8 +87,12 @@ impl Config {
             .with_context(|| format!("invalid config file {}", path.display()))
     }
 
-    /// Parses and validates a config file, whose relative paths are
-    /// relative to `base`.
+    /// Parses and validates the text of a config file.
+    ///
+    /// # Arguments
+    ///
+    /// - `text`: The content of the config file.
+    /// - `base`: The directory that relative paths are relative to.
     fn parse(text: &str, base: &Path) -> anyhow::Result<Self> {
         let mut config: Self = toml::from_str(text)?;
         config.validate()?;
@@ -87,6 +101,7 @@ impl Config {
         Ok(config)
     }
 
+    /// Checks that there are sources, with unique names and passwords.
     fn validate(&self) -> anyhow::Result<()> {
         if self.sources.is_empty() {
             bail!("no [[source]] configured");
@@ -110,8 +125,14 @@ impl Config {
     }
 }
 
-/// Source names are directory names. Lowercase ASCII letters, digits, '-',
-/// and '_' are valid on every OS, also on file systems that ignore case.
+/// Checks whether a source name is a valid directory name on every OS.
+///
+/// Lowercase ASCII letters, digits, '-', and '_' are valid on every OS, also
+/// on file systems that ignore case.
+///
+/// # Arguments
+///
+/// - `name`: The source name.
 fn is_valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.bytes().all(|b| {
@@ -138,8 +159,12 @@ mod tests {
         password = "secret"
     "#;
 
-    /// Returns a config with two sources, `first` and `second` as their
-    /// names.
+    /// Returns a config with two sources.
+    ///
+    /// # Arguments
+    ///
+    /// - `first`: The name of the first source.
+    /// - `second`: The name of the second source.
     fn two_sources(first: &str, second: &str) -> String {
         format!(
             r#"
@@ -161,6 +186,11 @@ mod tests {
         )
     }
 
+    /// Returns the error message of an invalid config.
+    ///
+    /// # Arguments
+    ///
+    /// - `text`: The content of the config file.
     fn error(text: &str) -> String {
         Config::parse(text, Path::new(""))
             .expect_err("config should be invalid")

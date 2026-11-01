@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+//! Library of the `imap-statistics` CLI.
+//!
+//! It exists so that every module can be built and tested on its own. It
+//! is no stable API for other crates.
+
+pub mod config;
+pub mod fetch;
+pub mod imap;
+pub mod store;
+#[cfg(test)]
+mod test_util;
