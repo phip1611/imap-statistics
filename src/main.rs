@@ -29,6 +29,7 @@ enum Command {
     CheckConfig,
 }
 
+/// Runs the command of the command line.
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let config = Config::load(&cli.config)?;
@@ -38,6 +39,11 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Prints the data directory and the sources of the config.
+///
+/// # Arguments
+///
+/// - `config`: The config.
 fn check_config(config: &Config) {
     println!("Data directory: {}", config.data_dir.display());
     println!("Sources:");

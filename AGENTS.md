@@ -34,6 +34,11 @@ typos
 
 - Every `.rs` file starts with `// SPDX-License-Identifier: MIT OR Apache-2.0`.
 - Line width is 80 (`rustfmt.toml`, `.editorconfig`).
+- Every function has a doc comment, private ones and test helpers too: a
+  summary of one line (two at most), optionally more text after an empty
+  line, and then a `# Arguments` section that lists every argument but
+  `self` as `` - `name`: description ``. Test functions only need a
+  summary if their name is not enough.
 - Commit subjects are `<component>: <title>`, imperative, at most 72
   characters. Commits are atomic: dependency additions, renames, and moves
   go into their own commits.
