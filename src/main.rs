@@ -2,13 +2,11 @@
 
 //! CLI to generate statistics about the emails in IMAP accounts.
 
-mod config;
-
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use crate::config::Config;
+use imap_statistics::config::Config;
 
 /// Fetches the headers of all emails from IMAP accounts and generates a
 /// Markdown report with statistics.
