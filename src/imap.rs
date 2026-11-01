@@ -10,15 +10,17 @@
 //! [`check_read_only`] refuses every other command before it is sent.
 //!
 //! The submodules read the responses of the server ([`response`]), parse
-//! them (`parse`), send the commands (`client`), and guard them
-//! (`read_only`).
+//! them (`parse`), send the commands (`client`), guard them
+//! (`read_only`), and choose the folders (`folders`).
 
 mod client;
+mod folders;
 mod parse;
 mod read_only;
 pub mod response;
 
 pub use client::Client;
+pub use folders::select_folders;
 pub use read_only::check_read_only;
 
 /// A folder as listed by the server.
