@@ -112,10 +112,10 @@ fn tokenize(line: &[u8], tokens: &mut Vec<Token>) -> Option<usize> {
                     .position(|b| matches!(b, b' ' | b'(' | b')'))
                     .unwrap_or(rest.len());
                 let (atom, after) = rest.split_at(end);
-                if after.is_empty() {
-                    if let Some(length) = literal_length(atom) {
-                        return Some(length);
-                    }
+                if after.is_empty()
+                    && let Some(length) = literal_length(atom)
+                {
+                    return Some(length);
                 }
                 tokens.push(Token::Atom(String::from_utf8_lossy(atom).into()));
                 rest = after;
