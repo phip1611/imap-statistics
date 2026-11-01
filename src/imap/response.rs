@@ -217,6 +217,8 @@ mod tests {
         );
     }
 
+    /// Brackets stay in atoms, which keeps the tokenizer simple. Callers then
+    /// match e.g. `[UIDVALIDITY`.
     #[test]
     fn keeps_brackets_in_atoms() {
         let tokens = read(b"* OK [UIDVALIDITY 42] UIDs valid\r\n")
@@ -254,6 +256,8 @@ mod tests {
         );
     }
 
+    /// Headers come as literals: `{n}` announces raw bytes, after which the
+    /// response continues on the same line.
     #[test]
     fn reads_literals_and_the_rest_of_the_line_after_them() {
         let input = b"* 1 FETCH (UID 7 BODY[HEADER] {5}\r\nab\r\nc)\r\n\
@@ -304,6 +308,8 @@ mod tests {
         assert_eq!(tokens[2], atom("{5}"));
     }
 
+    /// The free text of status responses may contain a single quote, which must
+    /// not fail the response.
     #[test]
     fn accepts_unterminated_quoted_strings() {
         let tokens =
@@ -321,6 +327,8 @@ mod tests {
         );
     }
 
+    /// The limits protect against a broken server that would make the client
+    /// allocate gigabytes.
     #[test]
     fn rejects_too_long_line() {
         let mut input = vec![

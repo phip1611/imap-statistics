@@ -197,6 +197,8 @@ mod tests {
         );
     }
 
+    /// Names and subjects in other scripts come as encoded words (RFC 2047),
+    /// and long headers continue on the next line.
     #[test]
     fn decodes_encoded_words_and_folded_lines() {
         let email = parse(
@@ -219,6 +221,8 @@ mod tests {
         );
     }
 
+    /// Recipients come from several headers, in groups, and repeated. Each
+    /// counts once, in lowercase.
     #[test]
     fn collects_the_recipients_of_to_cc_and_bcc() {
         let email = parse(
@@ -255,6 +259,8 @@ mod tests {
         assert!(parse("List-Id: <news.example.com>\r\n\r\n").list);
     }
 
+    /// Spam and old emails often have broken headers, which must not stop the
+    /// index.
     #[test]
     fn leaves_missing_and_broken_headers_empty() {
         assert_eq!(parse("\r\n"), Email::default());
@@ -266,6 +272,8 @@ mod tests {
         assert_eq!(email.message_id, None);
     }
 
+    /// The arrival on the server is the fallback for the year. Servers pad the
+    /// day with a space and send offsets of either sign.
     #[test]
     fn parses_internaldate() {
         assert_eq!(

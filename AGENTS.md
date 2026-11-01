@@ -43,8 +43,8 @@ commit the changed demo report, which CI compares.
 - Every function has a doc comment, private ones and test helpers too: a
   summary of one line (two at most), optionally more text after an empty
   line, and then a `# Arguments` section that lists every argument but
-  `self` as `` - `name`: description ``. Test functions only need a
-  summary if their name is not enough.
+  `self` as `` - `name`: description ``. Non-trivial tests start with 1-3
+  lines that explain their context, e.g. why the case matters.
 - Commit subjects are `<component>: <title>`, imperative, at most 72
   characters. Commits are atomic: dependency additions, renames, and moves
   go into their own commits.

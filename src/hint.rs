@@ -93,6 +93,8 @@ mod tests {
         assert_eq!(hint(&refused("EXAMINE")), None);
     }
 
+    /// rustls reports certificate errors wrapped in I/O errors, which the hint
+    /// must find among the causes. Other TLS errors get no hint.
     #[test]
     fn hints_at_the_ca_for_untrusted_certificates() {
         let untrusted = io::Error::new(

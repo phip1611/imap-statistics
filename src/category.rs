@@ -212,6 +212,8 @@ mod tests {
         }
     }
 
+    /// Social networks send from many subdomains, e.g. `mail.xing.com`, so a
+    /// rule for a domain also matches its subdomains.
     #[test]
     fn detects_social_networks_and_their_subdomains() {
         let social = [
@@ -240,6 +242,8 @@ mod tests {
         assert_eq!(Category::of(&bulk), Category::Newsletter);
     }
 
+    /// Shops send orders from all kinds of addresses, so the subject decides.
+    /// Rules match whole words or word starts, so that "Border" is no order.
     #[test]
     fn detects_shopping_by_the_subject() {
         for subject in [
@@ -258,6 +262,9 @@ mod tests {
         }
     }
 
+    /// Programs send from addresses like `noreply@`, also with a tag, or set
+    /// `Auto-Submitted`. `Auto-Submitted: no` and look-alike addresses stay
+    /// personal.
     #[test]
     fn detects_notifications_by_sender_and_headers() {
         for from in [
@@ -282,6 +289,8 @@ mod tests {
         assert_eq!(Category::of(&person), Category::Personal);
     }
 
+    /// Short rules like `sale` must not match longer words, e.g. "Sales
+    /// report", while `bestell*` matches German compounds.
     #[test]
     fn matches_whole_words_unless_a_rule_ends_with_a_star() {
         let category = |subject| Category::of(&email("a@b.example", subject));
@@ -292,6 +301,8 @@ mod tests {
         assert_eq!(category("Your sign-in code"), Category::Notification);
     }
 
+    /// Guards the rule lists against mistakes that no other test catches:
+    /// duplicates, uppercase, and words that never match a normalized subject.
     #[test]
     fn rules_are_normalized_unique_and_at_least_100_per_category() {
         for (category, rules) in [
@@ -323,6 +334,8 @@ mod tests {
         assert_eq!(Category::of(&Email::default()), Category::Personal);
     }
 
+    /// The index stores categories by their serde name, and the report shows
+    /// `name()`, so both must be the same words.
     #[test]
     fn names_match_serde() {
         for category in Category::ALL {
