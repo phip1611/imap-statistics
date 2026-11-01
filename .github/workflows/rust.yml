@@ -41,6 +41,39 @@ jobs:
       - name: "CLI [release]: imap-statistics --help"
         run: cargo run --locked --release -- --help
 
+  # Generates the demo report on every OS and compares it with the
+  # committed one, so that it stays up to date and the output is the same
+  # everywhere.
+  demo_report:
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ macos-latest, ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.runs-on }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stable
+          save-if: false
+      - name: Generate the demo report
+        run: examples/demo/generate.sh
+      - name: Check that the committed demo report is up to date
+        run: |
+          changes=$(git status --porcelain -- examples/demo/report)
+          if [ -n "$changes" ]; then
+              echo "$changes"
+              echo "The demo report is outdated, run examples/demo/generate.sh" >&2
+              exit 1
+          fi
+
   style_checks:
     runs-on: ubuntu-latest
     env:
