@@ -11,6 +11,7 @@ pub mod email;
 pub mod fetch;
 pub mod imap;
 pub mod index;
+pub mod report;
 pub mod store;
 pub mod svg;
 #[cfg(test)]
