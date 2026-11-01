@@ -109,25 +109,32 @@ fn render(
 fn accounts(index: &Index, sources: &[Source]) -> Vec<String> {
     let mut lines = vec!["## Accounts".to_owned(), String::new()];
     lines.extend(table(
-        &["Account", "Address", "Server", "Emails"],
-        &[3],
+        &["Account", "Address", "Server", "Received", "Sent"],
+        &[3, 4],
         sources.iter().map(|source| {
-            let emails = index
-                .emails
-                .iter()
-                .filter(|email| email.sources.contains(&source.name))
-                .count();
+            let (mut received, mut sent) = (0, 0);
+            for email in &index.emails {
+                if email.sources.contains(&source.name) {
+                    if email.sent {
+                        sent += 1;
+                    } else {
+                        received += 1;
+                    }
+                }
+            }
             vec![
                 escape(&source.name),
                 escape(&source.username),
                 escape(&format!("{}:{}", source.host, source.port)),
-                number(emails as u64),
+                number(received),
+                number(sent),
             ]
         }),
     ));
     lines.extend(paragraph(
         "An email in several accounts counts once in the other sections, \
-         but for each account here.",
+         but for each account here. An email counts as sent if it came from \
+         an address of an account, or is in a Sent folder.",
     ));
     lines
 }
@@ -138,20 +145,26 @@ fn accounts(index: &Index, sources: &[Source]) -> Vec<String> {
 ///
 /// - `index`: The index of all emails.
 fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
-    let mut counts = BTreeMap::new();
-    for year in index.emails.iter().filter_map(|email| email.year) {
-        *counts.entry(year).or_insert(0) += 1;
+    // Received and sent emails per year.
+    let mut counts: BTreeMap<i64, [u64; 2]> = BTreeMap::new();
+    for email in &index.emails {
+        if let Some(year) = email.year {
+            counts.entry(year).or_default()[usize::from(email.sent)] += 1;
+        }
     }
     // Every year from the first to the last, so that gaps show.
     let data: Vec<_> = match (counts.keys().next(), counts.keys().next_back()) {
         (Some(&first), Some(&last)) => (first..=last)
             .map(|year| {
-                (year.to_string(), counts.get(&year).copied().unwrap_or(0))
+                let [received, sent] =
+                    counts.get(&year).copied().unwrap_or_default();
+                (year.to_string(), vec![received, sent])
             })
             .collect(),
         _ => Vec::new(),
     };
-    let undated = index.emails.len() - counts.values().sum::<u64>() as usize;
+    let dated: u64 = counts.values().flatten().sum();
+    let undated = index.emails.len() as u64 - dated;
     let mut lines = vec![
         "## Emails per year".to_owned(),
         String::new(),
@@ -159,22 +172,19 @@ fn years(index: &Index) -> (Vec<String>, (&'static str, String)) {
         String::new(),
     ];
     lines.extend(table(
-        &["Year", "Emails"],
-        &[1],
-        data.iter()
-            .map(|(year, count)| vec![year.clone(), number(*count)]),
+        &["Year", "Received", "Sent"],
+        &[1, 2],
+        data.iter().map(|(year, counts)| {
+            vec![year.clone(), number(counts[0]), number(counts[1])]
+        }),
     ));
     if undated > 0 {
         lines.extend(paragraph(&format!(
             "Left out for lack of a usable date: {}.",
-            count(undated as u64, "email", "emails")
+            count(undated, "email", "emails")
         )));
     }
-    let columns: Vec<_> = data
-        .iter()
-        .map(|(year, count)| (year.clone(), vec![*count]))
-        .collect();
-    let chart = svg::columns("Emails per year", &["Emails"], &columns);
+    let chart = svg::columns("Emails per year", &["Received", "Sent"], &data);
     (lines, (YEARS_CHART, chart))
 }
 
@@ -572,6 +582,7 @@ mod tests {
     fn lists_the_accounts_with_their_emails() {
         let mut both = entry(Some(2024), "a@example.com", Category::Personal);
         both.sources.push("home".into());
+        both.sent = true;
         let index = Index {
             emails: vec![
                 entry(Some(2024), "a@example.com", Category::Personal),
@@ -584,9 +595,9 @@ mod tests {
         assert_eq!(
             rows(markdown, "Account"),
             [
-                ["work", "work@example.com", "imap.example.com:993", "2"],
-                ["home", "home@example.com", "imap.example.com:993", "1"],
-                ["old", "old@example.com", "imap.example.com:993", "0"],
+                ["work", "work@example.com", "imap.example.com:993", "1", "1"],
+                ["home", "home@example.com", "imap.example.com:993", "0", "1"],
+                ["old", "old@example.com", "imap.example.com:993", "0", "0"],
             ]
         );
         assert!(!markdown.contains("secret"), "{markdown}");
@@ -594,11 +605,13 @@ mod tests {
 
     #[test]
     fn counts_emails_per_year_with_gaps() {
+        let mut sent = entry(Some(2023), "me@example.com", Category::Personal);
+        sent.sent = true;
         let index = Index {
             emails: vec![
                 entry(Some(2021), "a@example.com", Category::Personal),
                 entry(Some(2023), "a@example.com", Category::Personal),
-                entry(Some(2023), "a@example.com", Category::Personal),
+                sent,
                 entry(None, "a@example.com", Category::Personal),
             ],
         };
@@ -617,13 +630,14 @@ mod tests {
         );
         assert_eq!(
             rows(markdown, "Year"),
-            [["2021", "1"], ["2022", "0"], ["2023", "2"]]
+            [["2021", "1", "0"], ["2022", "0", "0"], ["2023", "1", "1"]]
         );
         assert!(
             markdown.contains("Left out for lack of a usable date: 1 email."),
             "{markdown}"
         );
-        assert!(file(&report, YEARS_CHART).contains("<title>2023: 2</title>"));
+        let chart = file(&report, YEARS_CHART);
+        assert!(chart.contains("<title>2023, Sent: 1</title>"), "{chart}");
     }
 
     #[test]

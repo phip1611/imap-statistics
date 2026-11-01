@@ -6,34 +6,35 @@ Generated on 2026-01-01 00:00:00Z by
 
 ## Accounts
 
-| Account | Address        | Server               | Emails |
-| :------ | :------------- | :------------------- | -----: |
-| work    | me@example.com | imap.example.com:993 |  2,884 |
-| private | me@example.org | imap.example.org:993 |  3,066 |
+| Account | Address        | Server               | Received | Sent |
+| :------ | :------------- | :------------------- | -------: | ---: |
+| work    | me@example.com | imap.example.com:993 |    2,884 |    0 |
+| private | me@example.org | imap.example.org:993 |    3,066 |    0 |
 
 An email in several accounts counts once in the other sections, but for each
-account here.
+account here. An email counts as sent if it came from an address of an account,
+or is in a Sent folder.
 
 ## Emails per year
 
 ![Emails per year](emails-per-year.svg)
 
-| Year | Emails |
-| :--- | -----: |
-| 2012 |    279 |
-| 2013 |    308 |
-| 2014 |    313 |
-| 2015 |    334 |
-| 2016 |    353 |
-| 2017 |    378 |
-| 2018 |    392 |
-| 2019 |    414 |
-| 2020 |    424 |
-| 2021 |    438 |
-| 2022 |    462 |
-| 2023 |    480 |
-| 2024 |    516 |
-| 2025 |    505 |
+| Year | Received | Sent |
+| :--- | -------: | ---: |
+| 2012 |      279 |    0 |
+| 2013 |      308 |    0 |
+| 2014 |      313 |    0 |
+| 2015 |      334 |    0 |
+| 2016 |      353 |    0 |
+| 2017 |      378 |    0 |
+| 2018 |      392 |    0 |
+| 2019 |      414 |    0 |
+| 2020 |      424 |    0 |
+| 2021 |      438 |    0 |
+| 2022 |      462 |    0 |
+| 2023 |      480 |    0 |
+| 2024 |      516 |    0 |
+| 2025 |      505 |    0 |
 
 Left out for lack of a usable date: 7 emails.
 
