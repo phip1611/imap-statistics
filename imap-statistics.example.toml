@@ -1,0 +1,25 @@
+# Example config of imap-statistics. Copy it to imap-statistics.toml and
+# fill in your accounts. The file holds passwords: keep it private.
+
+# Directory for the fetched headers, the index, and the report. A relative
+# path is relative to the directory of this file.
+data_dir = "imap-statistics-data"
+
+# One [[source]] per IMAP account. The connection always uses TLS
+# (IMAPS), STARTTLS is not supported.
+[[source]]
+# Unique name: lowercase letters, digits, '-', and '_'.
+name = "work"
+host = "imap.example.com"
+# Optional, 993 by default.
+port = 993
+username = "me@example.com"
+# Many providers require an app password if two-factor authentication is
+# enabled, e.g. Gmail: https://myaccount.google.com/apppasswords
+password = "app password"
+
+[[source]]
+name = "private"
+host = "imap.example.org"
+username = "me@example.org"
+password = "app password"
