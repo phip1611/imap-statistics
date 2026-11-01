@@ -9,6 +9,8 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Context;
+use jiff::Timestamp;
+use jiff::tz::Offset;
 use serde::{Deserialize, Serialize};
 
 use crate::category::Category;
@@ -22,7 +24,6 @@ pub const INDEX_FILE: &str = "index.json";
 const EARLIEST_DATE: i64 = 315_532_800;
 /// Dates more than a day in the future are broken.
 const MAX_FUTURE: i64 = 24 * 60 * 60;
-const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 
 /// The emails of all sources.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,7 +126,7 @@ fn entry(
     });
     Entry {
         sources: vec![source.to_owned()],
-        year: date.map(year),
+        year: date.and_then(year),
         sender: email.sender.as_ref().map(|s| s.address.clone()),
         sender_name: email.sender.as_ref().and_then(|s| s.name.clone()),
         category: Category::of(email),
@@ -162,32 +163,15 @@ fn copy_key(source: &str, stored: &StoredHeader, email: &Email) -> String {
 
 /// Returns the year in UTC of a Unix timestamp.
 ///
-/// The algorithm `civil_from_days` of Howard Hinnant [0], reduced to the
-/// year.
+/// Returns `None` for timestamps beyond the years -9999 to 9999, which
+/// jiff supports, but no plausible date is.
 ///
 /// # Arguments
 ///
 /// - `timestamp`: Seconds since 1970-01-01 00:00:00 UTC.
-///
-/// [0]: https://howardhinnant.github.io/date_algorithms.html#civil_from_days
-const fn year(timestamp: i64) -> i64 {
-    // Days since 0000-03-01, so that leap days end a year.
-    let days = timestamp.div_euclid(SECONDS_PER_DAY) + 719_468;
-    let era = days.div_euclid(146_097);
-    let day_of_era = days.rem_euclid(146_097);
-    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524
-        - day_of_era / 146_096)
-        / 365;
-    let day_of_year =
-        day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    // January and February belong to the next year.
-    let march_based_month = (5 * day_of_year + 2) / 153;
-    let year = year_of_era + era * 400;
-    if march_based_month >= 10 {
-        year + 1
-    } else {
-        year
-    }
+fn year(timestamp: i64) -> Option<i64> {
+    let timestamp = Timestamp::from_second(timestamp).ok()?;
+    Some(i64::from(Offset::UTC.to_datetime(timestamp).year()))
 }
 
 #[cfg(test)]
@@ -241,7 +225,7 @@ mod tests {
             // 2100-03-01, after the day that is no leap day
             (4_107_542_400, 2100),
         ] {
-            assert_eq!(year(timestamp), expected, "{timestamp}");
+            assert_eq!(year(timestamp), Some(expected), "{timestamp}");
         }
     }
 
