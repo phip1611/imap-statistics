@@ -1,0 +1,3 @@
+[files]
+# Words of many languages that sort emails into categories.
+extend-exclude = ["src/category/rules.rs"]

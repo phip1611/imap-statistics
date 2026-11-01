@@ -2,9 +2,8 @@
 
 CLI to fetch the headers of all emails from IMAP accounts and generate a
 Markdown report with statistics: emails per year, per category, and per
-sender.
-
-> **Status:** under development, nothing usable yet.
+sender. See the [demo report](examples/demo/report/report.md) of
+made-up emails.
 
 The tool only reads from the IMAP servers and never changes a mailbox,
 not even the "seen" flag of a message. It runs on Linux, macOS, and
@@ -43,6 +42,16 @@ cargo install --locked --git https://github.com/phip1611/imap-statistics
    imap-statistics index
    ```
 
+5. Generate the report:
+
+   ```sh
+   imap-statistics report
+   ```
+
+   It is written to `report/report.md` in the data directory, with SVG
+   charts next to it. `--output <dir>` writes it elsewhere, and `--top <n>`
+   sets the number of senders in the list of top senders (default: 50).
+
 `--config <path>` selects another config file.
 
 ### What is fetched
@@ -67,16 +76,20 @@ several folders or sources count once. The year is in UTC, from the
 implausible.
 
 The categories come from simple rules on the headers, never the content,
-so a few emails end up in the wrong category. The first matching rule
+so a few emails end up in the wrong category. Each category has a list of
+over 100 sender domains, sender addresses, and subject words, in English,
+German, Polish, French, Spanish, Italian, and Dutch, in
+[`src/category/rules.rs`](src/category/rules.rs). The first matching rule
 wins:
 
-1. `social`: from a social network, e.g. `facebookmail.com`.
-2. `newsletter`: from a mailing list or newsletter (`List-Id`,
-   `List-Unsubscribe`, or `Precedence: bulk`).
-3. `shopping`: the subject is about an order, invoice, or delivery, in
-   English or German.
+1. `social`: from a social network or dating site, e.g.
+   `facebookmail.com`.
+2. `newsletter`: from a mailing list (`List-Id`, `List-Unsubscribe`, or
+   `Precedence: bulk`), or advertising, e.g. "Black Friday".
+3. `shopping`: about an order, invoice, payment, or delivery, e.g. from a
+   parcel service.
 4. `notification`: sent by a program (`Auto-Submitted`, or an address such
-   as `noreply@`).
+   as `noreply@`), e.g. a security code or a bounce.
 5. `personal`: everything else.
 
 ## License

@@ -1,0 +1,4 @@
+# Bash on Windows (Git Bash) fails on CRLF line endings.
+*.sh text eol=lf
+# Generated on every OS with LF, compared in CI.
+examples/demo/report/** text eol=lf
