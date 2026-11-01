@@ -140,6 +140,12 @@ impl<S: Read + Write> Client<S> {
         })
     }
 
+    /// Returns the stream, for tests to check what the client sent.
+    #[cfg(test)]
+    pub(crate) fn stream(&self) -> &S {
+        self.stream.get_ref()
+    }
+
     /// Logs out, after which the server closes the connection.
     pub fn logout(mut self) -> anyhow::Result<()> {
         self.run("LOGOUT", |_| Ok(()))
@@ -213,69 +219,8 @@ fn quote(text: &str) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{self, Cursor};
-
     use super::*;
-
-    /// Answers with prepared responses and records what the client sends.
-    #[derive(Debug)]
-    struct FakeServer {
-        responses: Cursor<Vec<u8>>,
-        sent: Vec<u8>,
-    }
-
-    impl Read for FakeServer {
-        /// Reads the next bytes of the prepared responses.
-        ///
-        /// # Arguments
-        ///
-        /// - `buf`: Receives the bytes.
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            self.responses.read(buf)
-        }
-    }
-
-    impl Write for FakeServer {
-        /// Records bytes that the client sends.
-        ///
-        /// # Arguments
-        ///
-        /// - `buf`: The bytes.
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.sent.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        /// Does nothing, as nothing is buffered.
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    /// Returns a client whose server sends the greeting, then responses.
-    ///
-    /// # Arguments
-    ///
-    /// - `responses`: What the server sends after the greeting.
-    fn client(responses: &[u8]) -> Client<FakeServer> {
-        let mut all = b"* OK IMAP4rev1 ready\r\n".to_vec();
-        all.extend_from_slice(responses);
-        Client::new(FakeServer {
-            responses: Cursor::new(all),
-            sent: Vec::new(),
-        })
-        .expect("greeting should be valid")
-    }
-
-    /// Returns what the client sent to the server.
-    ///
-    /// # Arguments
-    ///
-    /// - `client`: The client.
-    fn sent(client: &Client<FakeServer>) -> String {
-        String::from_utf8(client.stream.get_ref().sent.clone())
-            .expect("commands should be UTF-8")
-    }
+    use crate::test_util::{FakeServer, fake_client as client, sent};
 
     /// Returns a folder.
     ///
@@ -292,10 +237,7 @@ mod tests {
 
     #[test]
     fn rejects_greeting_other_than_ok() {
-        let server = FakeServer {
-            responses: Cursor::new(b"* BYE too busy\r\n".to_vec()),
-            sent: Vec::new(),
-        };
+        let server = FakeServer::new(b"* BYE too busy\r\n");
         let error = Client::new(server).expect_err("greeting should fail");
         assert_eq!(error.to_string(), "unexpected greeting: * BYE too busy");
     }

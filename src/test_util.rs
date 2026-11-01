@@ -4,8 +4,11 @@
 
 use std::env;
 use std::fs;
+use std::io::{self, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
+
+use crate::imap::Client;
 
 /// A new, empty directory, which is removed again on drop.
 #[derive(Debug)]
@@ -38,4 +41,75 @@ impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+/// An IMAP server that answers with prepared responses, and records what
+/// the client sends.
+#[derive(Debug)]
+pub struct FakeServer {
+    responses: Cursor<Vec<u8>>,
+    sent: Vec<u8>,
+}
+
+impl FakeServer {
+    /// Returns a server that answers with the given responses.
+    ///
+    /// # Arguments
+    ///
+    /// - `responses`: Everything the server sends, greeting included.
+    pub fn new(responses: &[u8]) -> Self {
+        Self {
+            responses: Cursor::new(responses.to_vec()),
+            sent: Vec::new(),
+        }
+    }
+}
+
+impl Read for FakeServer {
+    /// Reads the next bytes of the prepared responses.
+    ///
+    /// # Arguments
+    ///
+    /// - `buf`: Receives the bytes.
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.responses.read(buf)
+    }
+}
+
+impl Write for FakeServer {
+    /// Records bytes that the client sends.
+    ///
+    /// # Arguments
+    ///
+    /// - `buf`: The bytes.
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.sent.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    /// Does nothing, as nothing is buffered.
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Returns a client whose server sends the greeting, then responses.
+///
+/// # Arguments
+///
+/// - `responses`: What the server sends after the greeting.
+pub fn fake_client(responses: &[u8]) -> Client<FakeServer> {
+    let mut all = b"* OK IMAP4rev1 ready\r\n".to_vec();
+    all.extend_from_slice(responses);
+    Client::new(FakeServer::new(&all)).expect("greeting should be valid")
+}
+
+/// Returns what the client sent to the server.
+///
+/// # Arguments
+///
+/// - `client`: The client.
+pub fn sent(client: &Client<FakeServer>) -> String {
+    String::from_utf8(client.stream().sent.clone())
+        .expect("commands should be UTF-8")
 }
