@@ -12,5 +12,6 @@ pub mod fetch;
 pub mod imap;
 pub mod index;
 pub mod store;
+pub mod svg;
 #[cfg(test)]
 mod test_util;
