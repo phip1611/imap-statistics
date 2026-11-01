@@ -27,6 +27,20 @@
             pkgs.rustup
             pkgs.typst
           ];
+          # The GUI loads these at runtime, which NixOS does not provide
+          # in the usual paths.
+          LD_LIBRARY_PATH = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux (
+            pkgs.lib.makeLibraryPath [
+              pkgs.libGL
+              pkgs.libx11
+              pkgs.libxcursor
+              pkgs.libxi
+              pkgs.libxkbcommon
+              pkgs.libxrandr
+              pkgs.vulkan-loader
+              pkgs.wayland
+            ]
+          );
         };
       });
       formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
