@@ -2,21 +2,16 @@
 
 //! CLI to generate statistics about the emails in IMAP accounts.
 
-use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
 
-use imap_statistics::config::{Config, Source};
-use imap_statistics::fetch;
-use imap_statistics::hint::hint;
-use imap_statistics::index::{INDEX_FILE, Index, SourceEmails};
-use imap_statistics::pdf::{self, PDF_FILE};
-use imap_statistics::report::{self, REPORT_FILE};
-use imap_statistics::store;
+use imap_statistics::config::Config;
+use imap_statistics::run;
 
 /// Fetches the headers of all new emails from IMAP accounts, indexes them,
 /// and generates a Markdown report with statistics.
@@ -80,10 +75,26 @@ fn run(
     output: Option<PathBuf>,
     top: usize,
 ) -> anyhow::Result<()> {
-    let fetched = if offline { Ok(()) } else { fetch_all(config) };
-    let index = index(config)?;
-    report(config, &index, output, top)?;
-    fetched
+    let mut log = |line: &str| eprintln!("{line}");
+    // Ctrl+C ends the process, so the CLI needs no cancel.
+    let cancel = AtomicBool::new(false);
+    let outcome = run::run(
+        config,
+        offline,
+        output.as_deref(),
+        top,
+        now()?,
+        &cancel,
+        &mut log,
+    )?;
+    if outcome.failed > 0 {
+        bail!(
+            "{} of {} sources failed",
+            outcome.failed,
+            config.sources.len()
+        );
+    }
+    Ok(())
 }
 
 /// Prints the data directory and the sources of the config.
@@ -100,102 +111,6 @@ fn check_config(config: &Config) {
             source.name, source.username, source.host, source.port
         );
     }
-}
-
-/// Fetches all sources, also if one of them fails.
-///
-/// # Arguments
-///
-/// - `config`: The config.
-fn fetch_all(config: &Config) -> anyhow::Result<()> {
-    let mut failed = 0;
-    for source in &config.sources {
-        let name = &source.name;
-        eprintln!("{name}: fetching from {}:{}", source.host, source.port);
-        let progress = |message: &str| eprintln!("{name}: {message}");
-        match fetch::fetch_source(source, &config.data_dir, progress) {
-            Ok(summary) => eprintln!(
-                "{name}: done, {} emails in {} folders, {} new",
-                summary.emails, summary.folders, summary.fetched
-            ),
-            Err(error) => {
-                eprintln!("{name}: error: {error:#}");
-                if let Some(hint) = hint(&error) {
-                    eprintln!("{name}: hint: {hint}");
-                }
-                failed += 1;
-            }
-        }
-    }
-    if failed > 0 {
-        bail!("{failed} of {} sources failed", config.sources.len());
-    }
-    Ok(())
-}
-
-/// Builds the index of all fetched emails, and writes it.
-///
-/// # Arguments
-///
-/// - `config`: The config.
-fn index(config: &Config) -> anyhow::Result<Index> {
-    let mut sources = Vec::new();
-    for source in &config.sources {
-        let dir = config.data_dir.join(&source.name);
-        let headers = store::load(&dir)?;
-        if headers.is_empty() {
-            eprintln!("{}: no fetched emails", source.name);
-        }
-        sources.push(SourceEmails {
-            name: source.name.clone(),
-            headers,
-            sent_folders: store::sent_folders(&dir)?,
-        });
-    }
-    let own_addresses: HashSet<String> = config
-        .sources
-        .iter()
-        .flat_map(Source::own_addresses)
-        .collect();
-    let index = Index::build(&sources, &own_addresses, now()?.as_second());
-    let path = config.data_dir.join(INDEX_FILE);
-    index.write(&path)?;
-    let copies: usize = sources.iter().map(|s| s.headers.len()).sum();
-    let sent = index.emails.iter().filter(|e| e.sent).count();
-    let undated = index.emails.iter().filter(|e| e.year.is_none()).count();
-    eprintln!(
-        "Indexed {} emails ({sent} sent) from {copies} copies, {undated} \
-         without date, into {}",
-        index.emails.len(),
-        path.display()
-    );
-    Ok(index)
-}
-
-/// Generates the report.
-///
-/// # Arguments
-///
-/// - `config`: The config.
-/// - `index`: The index of all emails.
-/// - `output`: The directory for the report, or `None` for the default.
-/// - `top`: The number of senders and recipients in each list of top
-///   ones.
-fn report(
-    config: &Config,
-    index: &Index,
-    output: Option<PathBuf>,
-    top: usize,
-) -> anyhow::Result<()> {
-    let output = output.unwrap_or_else(|| config.data_dir.join("report"));
-    report::write(index, &config.sources, now()?, &output, top)?;
-    eprintln!("Wrote {}", output.join(REPORT_FILE).display());
-    // The PDF is a convenience, so its errors are only warnings.
-    match pdf::convert(&output, REPORT_FILE) {
-        Ok(()) => eprintln!("Wrote {}", output.join(PDF_FILE).display()),
-        Err(error) => eprintln!("warning: {error:#}"),
-    }
-    Ok(())
 }
 
 /// The variable that overrides the current time, in seconds since 1970.

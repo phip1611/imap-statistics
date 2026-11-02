@@ -9,11 +9,14 @@ pub mod category;
 pub mod config;
 pub mod email;
 pub mod fetch;
+#[cfg(feature = "gui")]
+pub mod gui;
 pub mod hint;
 pub mod imap;
 pub mod index;
 pub mod pdf;
 pub mod report;
+pub mod run;
 pub mod store;
 pub mod svg;
 #[cfg(test)]
